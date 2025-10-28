@@ -21,3 +21,4 @@ logs/
 # add system files to be ignored
 .DS_Store
 Thumbs.db   
+metviz.code-workspace
