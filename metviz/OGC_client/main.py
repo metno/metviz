@@ -1,0 +1,807 @@
+"""Interactive map demo used by the ADC NC-CF Data Visualization project.
+
+This module builds a simple ipyleaflet map wrapped in a Panel template and
+provides UI widgets for:
+
+- Loading WMS layers by providing a GetCapabilities URL.
+- Adding draggable markers to the map and editing marker properties.
+- Managing removable layers (markers and WMS layers) via a layer manager.
+
+The UI is assembled using Panel and ipyleaflet and expects the following
+optional external dependencies at runtime: `owslib`, `ipywidgets`, and
+`ipyleaflet`.
+
+This file is intended for exploratory/demo use and is kept small and
+imperative; functions are documented with docstrings to aid maintenance.
+"""
+
+from turtle import title
+from ipywidgets import HTML
+
+from ipyleaflet import Map, Marker, Popup, LayersControl, DrawControl, GeoJSON
+
+import panel as pn
+
+from bokeh.models import Button, Div
+
+
+pn.extension("ipywidgets", sizing_mode="stretch_width")
+
+
+ACCENT_BASE_COLOR = "#003366"
+
+import owslib.wms
+
+# --- WMS GetCapabilities UI ---
+
+from ipyleaflet import WMSLayer
+from ipyleaflet import projections
+
+import dateutil
+import dateutil.parser
+
+# --- WMS GetCapabilities UI ---
+
+wms_toggle = pn.widgets.Toggle(name="Show WMS Loader", button_type="primary", value=False)
+
+wms_url_input = pn.widgets.TextInput(name="WMS GetCapabilities URL", placeholder="Enter WMS URL")
+wms_ok_button = pn.widgets.Button(name="Load WMS Capabilities", button_type="success")
+wms_layers_pane = pn.pane.Markdown("", height=100, sizing_mode="stretch_width")
+wms_error_pane = pn.pane.Alert("", alert_type="danger", visible=False)
+wms_layers_selector = pn.widgets.CheckBoxGroup(name="Available WMS Layers", options=[], visible=False)
+wms_add_button = pn.widgets.Button(name="Add Selected Layer(s) to Map", button_type="primary", visible=False)
+
+def load_wms_layers(event):
+    """Load WMS GetCapabilities from the URL in the widget.
+
+    This function reads the URL entered in `wms_url_input` and attempts to
+    parse the WMS GetCapabilities document using `owslib.wms.WebMapService`.
+
+    On success it populates `wms_layers_pane` with a markdown list of
+    available layers and fills `wms_layers_selector.options` with tuples
+    (label, layer_name) so the user can choose layers to add to the map.
+
+    On failure the function displays an error message in
+    `wms_error_pane` and hides the selector and add button.
+
+    Args:
+        event: Panel click event (ignored; present to wire up as a callback).
+    """
+    url = wms_url_input.value.strip()
+    if not url:
+        wms_error_pane.object = "Please enter a WMS GetCapabilities URL."
+        wms_error_pane.visible = True
+        wms_layers_pane.object = ""
+        wms_layers_selector.visible = False
+        wms_add_button.visible = False
+        return
+    try:
+        wms = owslib.wms.WebMapService(url)
+        layers_md = "### Available WMS Layers\n"
+        options = []
+        for layer_name, layer in wms.contents.items():
+            # Label for user, value for logic
+            label = f"{layer_name}: {layer.title or ''}"
+            options.append((label, layer_name))  # value is only layer_name
+            layers_md += f"- **{layer_name}**: {layer.title or ''}\n"
+        # Add other WMS options
+        layers_md += "\n**WMS Version:** " + wms.version
+        layers_md += "\n**Service Title:** " + (wms.identification.title or "")
+        wms_layers_pane.object = layers_md
+        wms_layers_selector.options = options
+        wms_layers_selector.visible = True
+        wms_add_button.visible = True
+        wms_error_pane.visible = False
+    except Exception as e:
+        wms_error_pane.object = f"Error loading WMS: {e}"
+        wms_error_pane.visible = True
+        wms_layers_pane.object = ""
+        wms_layers_selector.visible = False
+        wms_add_button.visible = False
+
+wms_ok_button.on_click(load_wms_layers)
+
+def add_selected_wms_layers(event):
+    """Add the user-selected WMS layers to the map.
+
+    Reads the selected layer names from `wms_layers_selector` and creates
+    an `ipyleaflet.WMSLayer` for each selected layer. The created layers are
+    added to the global `lmap` object.
+
+    Args:
+        event: Panel click event (ignored; present to wire up as a callback).
+    """
+    url = wms_url_input.value.strip()
+    selected_layers = wms_layers_selector.value
+    if not url or not selected_layers:
+        return
+    # Use a CORS proxy for the WMS URL
+    proxy_url = "https://corsproxy.io/?" + url
+    for layer_name in selected_layers:
+        layer_name = layer_name[1]  # Extract actual layer name
+        wms_layer = WMSLayer(
+            url=url,
+            layers=layer_name,
+            crs=projections.EPSG4326, 
+            name=layer_name,
+            transparent=True,
+            format="image/png"
+        )
+        lmap.add_layer(wms_layer)
+
+wms_add_button.on_click(add_selected_wms_layers)
+
+wms_dialog = pn.Column(
+    wms_url_input,
+    wms_ok_button,
+    wms_error_pane,
+    # wms_layers_pane,
+    wms_layers_selector,
+    wms_add_button,
+    visible=False,
+    margin=(10, 10),
+    sizing_mode="stretch_width",
+    styles=dict(background='WhiteSmoke'),
+)
+
+
+def toggle_wms_dialog(event):
+    """Toggle visibility of the WMS configuration dialog.
+
+    Args:
+        event: Panel widget change event (ignored; used as a watcher callback).
+    """
+    wms_dialog.visible = wms_toggle.value
+
+wms_toggle.param.watch(toggle_wms_dialog, 'value')
+
+
+# END WMS GetCapabilities UI ---
+
+# CSW Query and Draw Handling (from main.py)
+
+csw_toggle = pn.widgets.Toggle(name="Show CSW Loader", button_type="primary", value=False)
+
+csw_url_input = pn.widgets.TextInput(name="CSW edpoint URL", placeholder="Enter CSW URL")
+csw_url_reset_button = pn.widgets.Button(name="Reset CSW URL", button_type="warning", width=120)
+
+# add a button to perform the CSW query
+csw_query_button = pn.widgets.Button(name="Query CSW", button_type="success")
+# add a button to clear previous results
+csw_clear_button = pn.widgets.Button(name="Clear Results", button_type="danger", visible=True)
+
+# csw_layers_pane = pn.pane.Markdown("", height=100, sizing_mode="stretch_width")
+csw_error_pane = pn.pane.Alert("", alert_type="danger", visible=False)
+# csw_layers_selector = pn.widgets.CheckBoxGroup(name="Available WMS Layers from CSW search", options=[], visible=False)
+csw_add_button = pn.widgets.Button(name="Add Selected Layer(s) to Map", button_type="primary", visible=False)
+
+# datetime pickers for start and end datetime
+# set the text color based on theme theme from pn.state.args
+# custom_styles = {
+#     'background': '#f0f0f0',
+#     'border': '2px solid black',
+#     'padding': '10px',
+#     'input.bk-input-group': {
+#         'color': 'black'},
+# }
+
+###
+
+# text_input_css = """
+# :host(.my-custom-text-input) input.bk-input {
+#     color: black;
+# }
+# """
+
+custom_css = """
+/* Target the text input element inside the Panel widget */
+:host input.bk-input {
+  color: black;
+  background: #f0f0f0
+}
+"""
+
+csw_datetime_picker_start = pn.widgets.DatetimePicker(name="Start DateTime", 
+                                                      stylesheets=[custom_css]) #,
+                                                      #css_classes=['my-custom-text-input'])
+
+# ####
+
+
+
+# csw_datetime_picker_start = pn.widgets.DatetimePicker(name="Start DateTime")
+csw_datetime_picker_end = pn.widgets.DatetimePicker(name="End DateTime")
+csw_datetime_picker_start.placeholder = "Select start datetime"
+csw_datetime_picker_end.placeholder = "Select end datetime"
+# reset buttons for datetime pickers could be added if needed
+csw_datetime_reset_button = pn.widgets.Button(name="Reset DateTime", button_type="warning", width=120)
+
+csw_anytext_input = pn.widgets.TextInput(name="Any Text Search", placeholder="Enter text to search in CSW records")
+csw_anytext_reset_button = pn.widgets.Button(name="Reset Any Text", button_type="warning", width=120)
+
+csw_bbox_label = pn.widgets.TextInput(name='BBOX', placeholder='BBOX from drawn shape', value='')
+csw_bbox_reset_button = pn.widgets.Button(name="Reset BBOX", button_type="warning", width=120)
+
+csw_output = pn.widgets.TextAreaInput(name='CSW Output', placeholder='CSW Query Output', value='', height=200, sizing_mode="stretch_width")
+csw_output.visible = False
+csw_output.disabled = True
+
+
+csw_dialog = pn.Column(
+    pn.Row(csw_url_input, csw_url_reset_button),
+    pn.Row(csw_anytext_input, csw_anytext_reset_button),
+    pn.Row(csw_bbox_label, csw_bbox_reset_button),
+    pn.Row(csw_datetime_picker_start, csw_datetime_picker_end, csw_datetime_reset_button),
+    pn.Row(csw_query_button, csw_clear_button),
+    csw_error_pane,
+    # csw_layers_pane,
+    # csw_layers_selector,
+    csw_add_button,
+    csw_output,
+    visible=False,
+    margin=(10, 10),
+    sizing_mode="stretch_width",
+    styles=dict(background='WhiteSmoke'),
+)   
+
+
+
+
+def process_datetime(event):
+    """Process a datetime picker value into an ISO 8601 string.
+
+    Args:
+        dt_picker (pn.widgets.DatetimePicker): The datetime picker widget.
+
+    Returns:
+        str: The ISO 8601 formatted datetime string, or None if no value.
+    """
+    time_bounds = []
+    for i in [csw_datetime_picker_start, csw_datetime_picker_end]:
+        dt_value = i.value
+        if dt_value is None:
+            return None
+        if isinstance(dt_value, str):
+            dt = dateutil.parser.parse(dt_value)
+        else:
+            dt = dt_value
+        time_bounds.append(dt.isoformat())
+    print("Processed datetime bounds:", time_bounds)
+    #csw_output.value = f"CSW Query Time Bounds: {time_bounds}"
+    #csw_output.visible = True
+    return time_bounds
+
+def process_query(event):
+    """Process the CSW query based on user inputs.
+
+    Args:
+        event: Panel click event (ignored; present to wire up as a callback).
+    """
+    csw_output.value = "Processing CSW Query...\n"
+    csw_output.visible = True
+    csw_error_pane.visible = False
+    # Gather inputs
+    csw_url = csw_url_input.value.strip()
+    anytext = csw_anytext_input.value.strip()
+    bbox = csw_bbox_label.value.strip()
+    time_bounds = process_datetime(event)
+    # Here you would implement the actual CSW query logic using the inputs
+    # For demonstration, we just print the gathered inputs
+    csw_output.value += f"CSW URL: {csw_url}\n"
+    csw_output.value += f"Any Text: {anytext}\n"
+    csw_output.value += f"BBOX: {bbox}\n"
+    csw_output.value += f"Time Bounds: {time_bounds}\n"
+    # Simulate successful query result
+    csw_output.value += "CSW Query completed successfully.\n"
+    # Show add button for layers (in real implementation, populate selector)
+    csw_add_button.visible = True
+
+csw_query_button.on_click(process_query)
+
+def clear_csw_results(event):
+    """Clear CSW query results and reset relevant widgets.
+
+    Args:
+        event: Panel click event (ignored; present to wire up as a callback).
+    """
+    csw_output.value = ""
+    csw_output.visible = False
+    csw_error_pane.visible = False
+    # csw_layers_selector.visible = False
+    csw_add_button.visible = False
+    # reset other CSW-related widgets if needed
+    # reset_csw_dialog()
+    
+
+def reset_csw_endpoint(event):
+    """Reset CSW endpoint URL input."""
+    csw_url_input.value = ""
+        
+csw_url_reset_button.on_click(reset_csw_endpoint)
+
+def reset_csw_anytext(event):
+    """Reset CSW Any Text input."""
+    csw_anytext_input.value = ""    
+csw_anytext_reset_button.on_click(reset_csw_anytext)
+
+def reset_csw_datetime(event):
+    """Reset CSW DateTime pickers."""
+    csw_datetime_picker_start.value = None
+    csw_datetime_picker_end.value = None    
+csw_datetime_reset_button.on_click(reset_csw_datetime)  
+
+def reset_csw_bbox(event):
+    """Reset CSW BBOX input."""
+    csw_bbox_label.value = ""    
+    # reset the drawn shape on the map if needed
+    draw.clear()
+csw_bbox_reset_button.on_click(reset_csw_bbox)  
+
+def reset_csw_dialog():
+    """Reset CSW dialog to initial state."""
+    csw_output.value = ""
+    csw_output.visible = False
+    csw_error_pane.visible = False
+    # csw_layers_selector.visible = False
+    csw_add_button.visible = False
+    # reset other CSW-related widgets if needed
+    csw_url_input.value = ""
+    csw_anytext_input.value = ""
+    csw_bbox_label.value = ""
+    csw_datetime_picker_start.value = None
+    csw_datetime_picker_end.value = None    
+
+csw_clear_button.on_click(clear_csw_results)
+
+
+def toggle_csw_dialog(event):
+    """Toggle visibility of the WMS configuration dialog.
+
+    Args:
+        event: Panel widget change event (ignored; used as a watcher callback).
+    """
+    csw_dialog.visible = csw_toggle.value
+
+
+csw_toggle.param.watch(toggle_csw_dialog, 'value')
+
+
+
+# --- End CSW Query and Draw Handling ---
+
+# --- Map and Marker Management ---
+
+def get_marker_and_map():
+    """Create the initial ipyleaflet Map and a main draggable Marker.
+
+    Returns:
+        tuple: (marker, lmap) where `marker` is the main Marker instance and
+        `lmap` is the ipyleaflet Map instance configured for the demo.
+    """
+    center = (52.204793, 360.121558)
+
+    lmap = Map(center=center, zoom=15, height=500)
+
+    marker = Marker(location=center, draggable=True)
+    # Add custom properties
+    marker.name = "Main Marker"
+    marker.description = "This is a draggable marker."
+    #
+    lmap.add_layer(marker)
+    lmap.layout.height="100%"
+    lmap.layout.width="100%"
+    lmap.add_control(LayersControl(position='topright'))
+    draw = DrawControl(edit=True,
+                       remove=True,
+                       circlemarker={},
+                       marker={},
+                       circle={},
+                       polyline={},
+                       polygon={},
+                       rectangle={"shapeOptions": {}},
+                       )
+    return marker, lmap, draw
+
+marker, lmap, draw = get_marker_and_map()
+
+# Create styled StaticText widgets that match the theme
+coord_styles = {
+    'background-color': '#FFFFFF',
+    'color': '#FFFFFF',
+    'padding': '5px 10px',
+    'border-radius': '4px',
+    'margin': '0 5px',
+    'font-family': 'system-ui, sans-serif',
+    'font-size': '18px'
+}
+
+lon_label = pn.widgets.StaticText(
+    name="Longitude",
+    value="",
+    styles=coord_styles
+)
+lat_label = pn.widgets.StaticText(
+    name="Latitude",
+    value="",
+    styles=coord_styles
+) 
+
+# # Style update function for theme changes
+# def update_coord_labels_style(dark_mode=False):
+#     new_styles = dict(coord_styles)
+#     new_styles.update({
+#         'background-color': '#003366' if dark_mode else 'white',
+#         'color': 'white' if dark_mode else '#333'
+#     })
+#     lon_label.styles = new_styles
+#     lat_label.styles = new_styles
+
+json_widget = pn.pane.JSON({}, height=75)
+
+
+add_marker_checkbox = pn.widgets.Checkbox(name="Enable Add Marker", value=False)
+
+def print_marker_properties(event, marker_obj):
+    """Callback invoked when a marker's location changes.
+
+    Updates the `json_widget` pane with the marker's current properties and
+    prints the updated values to stdout (useful for debugging in notebooks).
+
+    Args:
+        event (dict): Event payload from ipyleaflet containing a 'new'
+            key with the new (lat, lon) location.
+        marker_obj (Marker): The marker instance whose properties are shown.
+    """
+    new = event["new"]
+    print(f"Marker Name: {marker_obj.name}")
+    print(f"Marker Description: {marker_obj.description}")
+    print(f"New Location: {new}")
+    # Update the json_widget with marker properties
+    json_widget.object = {
+        "x": new[0],
+        "y": new[1],
+        "name": marker_obj.name,
+        "description": marker_obj.description
+    }
+
+# Attach observer to main marker to print and update json_widget when dragged
+marker.observe(lambda event, m=marker: print_marker_properties(event, m), 'location')
+
+# Panel widgets for editing marker properties
+marker_name_input = pn.widgets.TextInput(name="Marker Name", value="")
+marker_desc_input = pn.widgets.TextInput(name="Marker Description", value="")
+save_button = pn.widgets.Button(name="Save Marker Properties", button_type="primary")
+
+edit_panel = pn.Column(marker_name_input, marker_desc_input, save_button, visible=False)
+current_marker = [None]  # Use a list for mutability in nested scope
+
+def show_edit_panel(marker):
+    """Populate the edit panel with the selected marker's properties.
+
+    The edit panel contains text inputs to edit the marker's name and
+    description. The selected marker is stored in `current_marker[0]` for
+    later saving.
+
+    Args:
+        marker (Marker): The marker to edit.
+    """
+    marker_name_input.value = marker.name if hasattr(marker, "name") else ""
+    marker_desc_input.value = marker.description if hasattr(marker, "description") else ""
+    edit_panel.visible = True
+    current_marker[0] = marker
+
+def save_marker_properties(event):
+    """Save edited marker properties back to the marker instance.
+
+    Removes any existing instances of the marker from the map to avoid
+    duplication, updates the `name` and `description` attributes, re-adds
+    the marker to the map and updates the JSON widget and layer manager.
+
+    Args:
+        event: Button click event (ignored; present to wire up as a callback).
+    """
+    print("current_marker:", current_marker)
+    marker = current_marker[0]
+    if marker:
+        # lmap.remove_layer(current_marker[1])
+        # Remove all occurrences to avoid duplicates
+        while marker in lmap.layers:
+            lmap.remove_layer(marker)
+        remove_layer(marker)
+        print(f"Removing marker at {marker.location} to update properties.")
+        marker.name = marker_name_input.value
+        marker.description = marker_desc_input.value
+        lmap.add_layer(marker)
+        print(f"Saved properties for marker at {marker.location}:")
+        print(f"  Name: {marker.name}")
+        print(f"  Description: {marker.description}")
+        edit_panel.visible = False
+        json_widget.object = {
+            "x": marker.location[0],
+            "y": marker.location[1],
+            "name": marker.name,
+            "description": marker.description
+        }
+        marker.popup.value = f"""Hello <b>{marker.description}</b>"""
+        update_layer_manager()  # <-- Update if you want to reflect name changes
+  
+
+def create_button_click(val):
+    """Simple click handler used for debugging.
+
+    Args:
+        val: Value emitted by the widget click (logged to stdout).
+    """
+    print(val)
+    
+
+save_button.on_click(save_marker_properties)
+
+def on_map_click(**kwargs):
+    """Handle clicks on the map to create new markers when enabled.
+
+    If the 'Enable Add Marker' checkbox is checked and the interaction type
+    is a 'click', this function will create a new draggable marker at the
+    clicked coordinates, attach a popup, register the movement observer,
+    and open the edit panel for that marker.
+
+    Args:
+        **kwargs: Arbitrary interaction payload from ipyleaflet. Expected keys
+            include 'type' and 'coordinates'.
+    """
+    if add_marker_checkbox.value and kwargs.get("type") == "click":
+        latlng = kwargs.get("coordinates")
+        if latlng:
+            marker = Marker(location=latlng, draggable=True)
+            marker.name = f"Marker at {latlng}"
+            marker.description = f"Marker at {latlng}"
+            lmap.add_layer(marker)
+            print(f"Added marker at {latlng}")
+            marker.observe(lambda event, m=marker: print_marker_properties(event, m), 'location')
+            message = HTML()
+            message.placeholder = "Some HTML"
+            message.description = "Some HTML"
+            message.value = "Hello <b>World</b>"
+            marker.popup = message
+            show_edit_panel(marker)
+            update_layer_manager()  # <-- Only update when a marker is added
+
+def on_mouse_move(**kwargs):
+    if kwargs.get("type") == "mousemove":
+        coords = kwargs.get("coordinates")
+        lon_label.value = f"{coords[1] - 360:.6f}"
+        lat_label.value = f"{coords[0]:.6f}"
+
+def on_draw_handler(draw, action, geo_json):
+    print("drawing action:", action)
+    for i in lmap.layers:
+        if type(i) == GeoJSON:
+            print("ok")
+            lmap.remove_layer(i)
+    bounds = geo_json["geometry"]["coordinates"][0]
+    modified_bounds = [[lon - 360, lat] for lon, lat in bounds]
+    # bounds = [[i[0] - 360, i[1]] for i in bounds if i[0] >= 180]
+    ll = modified_bounds[0]
+    ur = modified_bounds[2]
+
+    print("bounds:", f"LL: {ll}, UR: {ur}")
+    corners = [ll, ur]
+    bbox = [item for sublist in corners for item in sublist]
+    csw_bbox_label.value = str(bbox)
+    geo_json_layer = GeoJSON(data=geo_json, name="Drawn Shape")
+    # this probably already in the map, need to add refresh to the removable layers
+    # lmap.add_layer(geo_json_layer)
+    pass
+
+
+lmap.on_interaction(on_map_click)  # Only once!
+
+lmap.on_interaction(on_mouse_move)  # Only once!
+
+
+draw.on_draw(on_draw_handler)
+lmap.add_control(draw)
+
+def add_selected_wms_layers(event):
+    """(Re)defined helper to add selected WMS layers and refresh the manager.
+
+    Note: This module contains a second definition of `add_selected_wms_layers`
+    later in the file. This definition mirrors the earlier one but also
+    calls `update_layer_manager()` after adding layers so the UI reflects
+    the new entries.
+
+    Args:
+        event: Panel click event (ignored; present to wire up as a callback).
+    """
+    url = wms_url_input.value.strip()
+    selected_layers = wms_layers_selector.value
+    if not url or not selected_layers:
+        return
+    proxy_url = "https://corsproxy.io/?" + url
+    for layer_name in selected_layers:
+        wms_layer = WMSLayer(
+            url=url,
+            layers=layer_name,
+            crs=projections.EPSG4326, 
+            name=layer_name,
+            transparent=True,
+            format="image/png"
+        )
+        lmap.add_layer(wms_layer)
+    update_layer_manager()  # <-- Only update when WMS layers are added
+
+wms_add_button.on_click(add_selected_wms_layers)
+
+# component = pn.Column(
+#     checkbox,
+#     pn.panel(lmap, sizing_mode="stretch_both", min_height=500),
+#     pn.Row(json_widget, edit_panel)
+# )
+####
+
+def get_removable_layers():
+    """Return a deduplicated list of layers that can be removed by the UI.
+
+    Excludes the primary `marker` and attempts to ensure uniqueness by a key
+    constructed from the layer type and identifying attributes (location and
+    name for markers, name for WMS layers).
+
+    Returns:
+        list: A list of ipyleaflet layer objects suitable for removal.
+    """
+    # Exclude the main marker and ensure uniqueness by (location, name)
+    seen = set()
+    unique_layers = []
+    for lyr in lmap.layers:
+        if (isinstance(lyr, Marker) and lyr is not marker) or isinstance(lyr, WMSLayer):
+            # Use (rounded lat, rounded lon, name) as a unique key
+            if isinstance(lyr, Marker):
+                key = (round(lyr.location[0], 6), round(lyr.location[1], 6), getattr(lyr, "name", ""))
+            elif isinstance(lyr, WMSLayer):
+                key = (getattr(lyr, "name", ""),)
+            else:
+                key = id(lyr)
+            if key not in seen:
+                unique_layers.append(lyr)
+                seen.add(key)
+    return unique_layers
+
+def remove_layer(layer):
+    """Remove the given layer from the map and refresh the layer manager.
+
+    Repeatedly removes occurrences of the same layer object to handle
+    accidental duplicates and then calls `update_layer_manager()` so the
+    UI stays in sync.
+
+    Args:
+        layer: The ipyleaflet layer object to remove.
+    """
+    # Remove all occurrences of this layer object (in case of duplicates)
+    while layer in lmap.layers:
+        lmap.remove_layer(layer)
+    update_layer_manager()
+
+def update_layer_manager(**kwargs):
+    """Rebuild the layer manager UI to reflect the current removable layers.
+
+    This function queries `get_removable_layers()` and constructs a list of
+    rows containing the layer name and a Remove button wired to call
+    `remove_layer()` for that layer.
+    """
+    # Clear and repopulate the layer manager panel
+    removable_layers = get_removable_layers()
+    items = []
+    for lyr in removable_layers:
+        lyr_name = getattr(lyr, "name", str(lyr))
+        btn = pn.widgets.Button(name="Remove", button_type="danger", width=60)
+        # Closure to capture current layer
+        btn.on_click(lambda event, l=lyr: remove_layer(l))
+        items.append(pn.Row(pn.pane.Markdown(f"**{lyr_name}**"), btn))
+    layer_manager[:] = items
+
+layer_manager = pn.Column(name="Layer Manager")
+update_layer_manager()
+
+# Update the manager whenever a marker or WMS layer is added
+def add_marker_and_update(*args, **kwargs):
+    """Helper used by external wiring to trigger a layer manager refresh.
+
+    Kept for backwards compatibility with earlier wiring where an add
+    operation would explicitly call this helper.
+    """
+    # on_map_click(*args, **kwargs)
+    update_layer_manager()
+
+def add_selected_wms_layers_and_update(event):
+    """Convenience wrapper: add selected WMS layers then refresh manager.
+
+    Provided so UI wiring can use a single handler that both adds layers and
+    updates the layer manager pane.
+    """
+    add_selected_wms_layers(event)
+    update_layer_manager()
+
+layer_manager_toggle = pn.widgets.Toggle(name="Show Layer Manager", button_type="primary", value=False)
+
+
+layer_manager_widget = pn.Column(pn.pane.Markdown("### Layers"), layer_manager, visible=False, sizing_mode="stretch_both", max_width=300)
+
+def toggle_layer_manager_dialog(event):
+    """Toggle visibility of the WMS configuration dialog.
+
+    Args:
+        event: Panel widget change event (ignored; used as a watcher callback).
+    """
+    layer_manager_widget.visible = layer_manager_toggle.value
+
+layer_manager_toggle.param.watch(toggle_layer_manager_dialog, 'value')
+
+# # Create a toggle for theme switching
+# theme_toggle = pn.widgets.Toggle(name='Dark Theme', value=False)
+
+# def on_theme_change(event):
+#     """Update coordinate labels style when theme changes"""
+#     update_coord_labels_style(event.new)
+
+# theme_toggle.param.watch(on_theme_change, 'value')
+
+
+
+
+# Create toolbar with buttons
+toolbar = pn.Row(
+    csw_toggle,
+    wms_toggle,
+    layer_manager_toggle,
+    # theme_toggle
+)
+
+toolbar.visible = False
+
+side_opt = pn.Column(edit_panel, 
+          csw_dialog, 
+          wms_dialog)
+side_opt.visible = False
+
+
+def show_hide_side_opt_widget(event):
+    print(side_opt.visible)
+    for i in pn.state.session_args:
+        print(i, pn.state.session_args[i])
+    if side_opt.visible:
+        side_opt.visible = False
+        toolbar.visible = False
+    else:
+        side_opt.visible = True
+        toolbar.visible = True
+
+
+
+    
+show_options_button = Button(
+        label="show opt",
+        height=30,
+        width=120,
+)  
+show_options_button.on_click(show_hide_side_opt_widget)
+
+component = pn.Column(pn.Row(show_options_button, toolbar), pn.Row(layer_manager_widget,
+                pn.Column(
+                    pn.panel(lmap, sizing_mode="stretch_both", min_height=500),
+                    pn.Row(lon_label, lat_label, width=450),
+                    pn.Row(add_marker_checkbox, json_widget)
+                ),
+                side_opt,
+                height_policy='max', sizing_mode="stretch_both"))
+
+
+template = pn.template.BootstrapTemplate(
+    site=" ADC NC-CF Data Visualization ",
+    # site_url="https://www.northwestknowledge.net/adc/",
+    favicon="/assets/ADC_logo.png",
+    title="OGC Map Widget Demo",
+    logo="/assets/ADC_logo.png",
+    header_background=ACCENT_BASE_COLOR,
+    #accent_base_color=ACCENT_BASE_COLOR,
+    main=[component],
+).servable()

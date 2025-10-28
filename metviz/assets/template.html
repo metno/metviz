@@ -1,0 +1,16 @@
+{% extends base %}
+
+<!-- goes in head -->
+{% block postamble %}
+<link rel="stylesheet" href="https://hvplot.wps.met.no/app/static/css/bootstrap.min.css">
+<meta name="viewport" content="width=device-width,minimum-scale=1,initial-scale=1">
+{% endblock %}
+
+<!-- goes in body -->
+{% block contents %}
+<!-- {{ app_title }} -->
+<br>
+
+  {{ embed(roots.A) }}
+
+{% endblock %}

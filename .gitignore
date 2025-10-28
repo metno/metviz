@@ -1,0 +1,7 @@
+# add credentials file to be ignored
+credentials.json
+# add docker settings to be ignored
+ncmet.yml
+# add seaice directory to be ignored
+seaice/
+

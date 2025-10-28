@@ -1,0 +1,211 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <title>{{ "NC-Met Visualization" }}</title>
+    <style>
+      /* --- CSS Variables for Themes --- */
+      :root {
+        /* Light theme colors */
+        --background-color: #f8f9fa;
+        --card-background: white;
+        --header-background: #003366;
+        --header-text: white;
+        --text-color: #333;
+        --card-hover-background: #f0f0f0;
+      }
+      
+      html[data-theme='dark'] {
+        /* Dark theme colors */
+        --background-color: #1a1a1a;
+        --card-background: #003366;
+        --header-background: #003366;
+        --header-text: #ecf0f1;
+        --text-color: #ecf0f1;
+        --card-hover-background: #34495e;
+      }
+      
+      /* --- Global Styles --- */
+      body {
+        font-family: system-ui, sans-serif;
+        background-color: var(--background-color);
+        color: var(--text-color);
+        margin: 0;
+        transition: background-color 0.3s, color 0.3s;
+      }
+      header {
+        display: flex;
+        height: 30px;
+        align-items: center;
+        padding: 1rem;
+        background-color: var(--header-background);
+        color: var(--header-text);
+        position: relative;
+      }
+      header img {
+        height: 30px;
+        margin-right: 1rem;
+        cursor: pointer;
+      }
+      .logout-button {
+        background-color: #dc3545;
+        color: white;
+        border: none;
+        padding: 0.5rem 1rem;
+        border-radius: 4px;
+        cursor: pointer;
+        margin-left: 1rem;
+        font-size: 0.9rem;
+        transition: background-color 0.3s;
+      }
+      .logout-button:hover {
+        background-color: #c82333;
+      }
+      .apps {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+        gap: 1rem;
+        padding: 2rem;
+      }
+      .app-card {
+        background: var(--card-background);
+        padding: 1rem;
+        border-radius: 8px;
+        box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        text-decoration: none;
+        color: inherit;
+        transition: background-color 0.3s;
+      }
+      .app-card:hover {
+        background: var(--card-hover-background);
+      }
+      
+      /* --- Theme Switcher Styles --- */
+      .theme-switch-wrapper {
+        display: flex;
+        align-items: center;
+        margin-left: auto;
+      }
+      .theme-switch {
+        display: inline-block;
+        height: 34px;
+        position: relative;
+        width: 60px;
+      }
+      .theme-switch input {
+        display: none;
+      }
+      .slider {
+        background-color: #ccc;
+        bottom: 0;
+        cursor: pointer;
+        left: 0;
+        position: absolute;
+        right: 0;
+        top: 0;
+        transition: 0.4s;
+      }
+      .slider:before {
+        background-color: #fff;
+        bottom: 4px;
+        content: "";
+        height: 26px;
+        left: 4px;
+        position: absolute;
+        transition: 0.4s;
+        width: 26px;
+      }
+      input:checked + .slider {
+        background-color: #66bb6a;
+      }
+      input:checked + .slider:before {
+        transform: translateX(26px);
+      }
+      .slider.round {
+        border-radius: 34px;
+      }
+      .slider.round:before {
+        border-radius: 50%;
+      }
+      .theme-switch-label {
+        font-size: 0.9rem;
+        margin: 0 10px;
+      }
+    </style>
+  </head>
+  <body onload="setInitialTheme()">
+    <link rel="icon" type="image/png" href="/assets/ADC_logo.png"/>
+    <header>
+      <a href="{{ '/' }}" id="home-link">
+        <img src="{{ '/assets/ADC_logo.png' }}" alt="Logo">
+      </a>
+      <h1>{{ "NC-Met Visualization" }}</h1>
+      <div class="theme-switch-wrapper">
+        <label class="theme-switch-label">Light</label>
+        <label class="theme-switch">
+          <input type="checkbox" id="theme-toggle">
+          <span class="slider round"></span>
+        </label>
+        <label class="theme-switch-label">Dark</label>
+      </div>
+      <button class="logout-button" onclick="window.location.href='/logout'">Logout</button>
+    </header>
+    <main>
+      <div class="apps">
+        {% for item in items %}
+          <a href="{{ item[0] }}" class="app-card">
+            <h3>{{ item[1] }}</h3>
+          </a>
+        {% end for %}
+      </div>
+    </main>
+    
+    <script>
+      const toggleSwitch = document.getElementById('theme-toggle');
+      const appLinks = document.querySelectorAll('.app-card');
+      const homeLink = document.getElementById('home-link');
+      
+      // Update all links with the correct theme query parameter
+      function updateLinks(theme) {
+        const themeParam = `?theme=${theme}`;
+        appLinks.forEach(link => {
+          const originalHref = link.getAttribute('href').split('?')[0];
+          link.href = `${originalHref}${themeParam}`;
+        });
+        const originalHomeHref = homeLink.getAttribute('href').split('?')[0];
+        homeLink.href = `${originalHomeHref}${themeParam}`;
+      }
+      
+      // On page load, set the theme from localStorage or system preference
+      function setInitialTheme() {
+        const currentTheme = localStorage.getItem('theme') || 
+                             (window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'default');
+        if (currentTheme === 'dark') {
+          document.documentElement.setAttribute('data-theme', 'dark');
+          toggleSwitch.checked = true;
+          updateLinks('dark');
+        } else {
+          document.documentElement.setAttribute('data-theme', 'light');
+          toggleSwitch.checked = false;
+          updateLinks('default');
+        }
+      }
+      
+      // Function to switch themes
+      function switchTheme(event) {
+        if (event.target.checked) {
+          document.documentElement.setAttribute('data-theme', 'dark');
+          localStorage.setItem('theme', 'dark');
+          updateLinks('dark');
+        } else {
+          document.documentElement.setAttribute('data-theme', 'light');
+          localStorage.setItem('theme', 'default');
+          updateLinks('default');
+        }
+      }
+      
+      toggleSwitch.addEventListener('change', switchTheme, false);
+      
+    </script>
+  </body>
+</html>
