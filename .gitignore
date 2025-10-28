@@ -4,4 +4,20 @@ credentials.json
 ncmet.yml
 # add seaice directory to be ignored
 seaice/
-
+# script to restart services
+update_service.sh
+# script too add license
+add_license.sh
+# add python files to be ignored
+*.pyc
+__pycache__/
+# add Jupyter notebook checkpoints to be ignored
+.ipynb_checkpoints/
+# add environment files to be ignored
+.env
+# add log files to be ignored
+*.log
+logs/
+# add system files to be ignored
+.DS_Store
+Thumbs.db   
