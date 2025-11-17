@@ -10,6 +10,7 @@ from typing import Tuple
 import holoviews as hv
 import panel as pn
 import xarray as xr
+from ipywidgets import HTML
 from ipyleaflet import Map, Marker, Polyline, WMSLayer
 from bokeh.models import HoverTool, CustomJSHover
 
@@ -219,9 +220,17 @@ def makeplot(variable: str, idx) -> hv.Overlay:
             # ignore removal errors; we'll replace marker below
             pass
 
+    timestep = ds.time[pos].dt.strftime('%Y-%m-%dT%H:%M:%S').values
+    value = float(ds[variable].isel(time=pos).values)
+    marker_message = HTML()
+    marker_message.value = (f'<p><b>Time</b>: {timestep}<br />'
+                            f'<b>Location</b>: {center_lat}, {center_lon}<br />'
+                            f'<b>{ylabel}</b>: {value}</p>')
     try:
         marker = Marker(location=center, draggable=False)
         m.add(marker)
+
+        marker.popup = marker_message
         m._marker = marker
         m.center = center
     except Exception as e:
