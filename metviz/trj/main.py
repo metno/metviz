@@ -11,8 +11,11 @@ import holoviews as hv
 import panel as pn
 import xarray as xr
 from ipywidgets import HTML
-from ipyleaflet import Map, Marker, Polyline, WMSLayer
+from ipyleaflet import Map, Marker, Polyline, WMSLayer, Popup
 from bokeh.models import HoverTool, CustomJSHover
+import numpy as np
+from geographiclib.geodesic import Geodesic
+
 
 pn.extension("ipywidgets", sizing_mode="stretch_width")
 hv.extension("bokeh")
@@ -24,6 +27,38 @@ RESOURCES = {
     "c": "https://thredds.niva.no/thredds/dodsC/datasets/norsoop/color_fantasy/merged_acdd_color_fantasy.nc",
     "d": "https://thredds.niva.no/thredds/dodsC/datasets/nrt/color_fantasy.nc",
 }
+
+# code starts growing, probably better to add an utils.py file
+
+def calculate_total_geodetic_length(points):
+    """
+    Calculates the total geodetic length of a sequence of points (lat, lon).
+
+    Args:
+        points: A list of tuples, where each tuple is (latitude, longitude).
+
+    Returns:
+        The total length in meters (float).
+    """
+    total_distance = 0.0
+    geod = Geodesic.WGS84  # Use the standard WGS84 ellipsoid
+
+    # Iterate through the points from the second point to the end
+    # comparing each point with the previous one
+    for i in range(1, len(points)):
+        lat1, lon1 = points[i-1]
+        lat2, lon2 = points[i]
+
+        # Perform the inverse calculation for the current segment
+        g = geod.Inverse(lat1, lon1, lat2, lon2)
+
+        # 's12' is the distance in meters for that segment
+        segment_distance = g['s12']
+        total_distance += segment_distance
+
+    return total_distance
+
+
 
 @pn.cache
 def _open_dataset(url: str) -> xr.Dataset:
@@ -50,8 +85,9 @@ if not plottable_vars:
 
 
 # Widgets
+width = np.max([len(i) for i in plottable_vars]) * 10
 var_select = pn.widgets.Select(
-    name="Data Variable", options=plottable_vars, value=plottable_vars[0]
+    name="Data Variable", options=plottable_vars, value=plottable_vars[0], width=width
 )
 
 datetime_slider = pn.widgets.DatetimeSlider(
@@ -61,13 +97,13 @@ datetime_slider = pn.widgets.DatetimeSlider(
     value=ds.indexes["time"][0],
 )
 
-index_value = pn.widgets.TextInput(name="Location", value="index")
+index_value = pn.widgets.TextInput(name="Location", value="index", width=200)
 
 # Checkbox to allow choosing whether to use the throttled slider value
 # (updates only on mouse-up) or the immediate slider value (updates
 # continuously while dragging). Default to throttled to keep UI snappy.
 throttle_checkbox = pn.widgets.Checkbox(
-    name="Use throttled slider (mouse-up only)", value=False
+    name="on-release", value=False, width=100
 )
 
 
@@ -99,6 +135,10 @@ gebco_polar_stereo_north_wms = WMSLayer(
 locations = [[float(lat), float(lon)] for lat, lon in zip(ds.latitude.values, ds.longitude.values)]
 line = Polyline(locations=locations, color="green", fill=False)
 
+# print out total length of the trajectory
+total_length_m = calculate_total_geodetic_length(locations)
+line_popup_content = HTML(f"""<b>Total trajectory length:</b> <br>{total_length_m/1000:.2f} km""")
+line.popup = line_popup_content
 
 # Create the map and add the trajectory line. Center on the mean location.
 m = Map(
@@ -108,6 +148,8 @@ m = Map(
     basemap=gebco_polar_stereo_north_wms,
 )
 m.add(line)
+
+
 
 # Attach a private attribute to hold the active marker, avoiding globals.
 m._marker = None
@@ -258,8 +300,7 @@ dmap = hv.DynamicMap(bound_function)
 
 # Compose the layout: widgets on top, then the plot and map together
 layout = pn.Column(
-    pn.Row(var_select, datetime_slider, throttle_checkbox),
-    index_value,
+    pn.Row(var_select, datetime_slider, throttle_checkbox, index_value),
     pn.Column(dmap, m, sizing_mode="scale_both"),
 )
 
