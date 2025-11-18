@@ -30,6 +30,28 @@ RESOURCES = {
 
 # code starts growing, probably better to add an utils.py file
 
+
+def compute_trajectory_duration(ds, time_dim='time'):
+    """
+    Computes the total duration of a trajectory in an xarray Dataset.
+
+    Args:
+        ds: An xarray Dataset containing a time dimension.
+        time_dim: The name of the time dimension in the dataset.
+    """
+    time_values = ds[time_dim].values
+    if len(time_values) < 2:
+        return 0.0  # Not enough data to compute duration
+
+    start_time = np.datetime64(time_values[0])
+    end_time = np.datetime64(time_values[-1])
+    duration = (end_time - start_time) / np.timedelta64(1, 's')  # Duration in seconds
+    return duration
+
+
+
+        
+
 def calculate_total_geodetic_length(points):
     """
     Calculates the total geodetic length of a sequence of points (lat, lon).
@@ -137,7 +159,14 @@ line = Polyline(locations=locations, color="green", fill=False)
 
 # print out total length of the trajectory
 total_length_m = calculate_total_geodetic_length(locations)
-line_popup_content = HTML(f"""<b>Total trajectory length:</b> <br>{total_length_m/1000:.2f} km""")
+total_duration_s = compute_trajectory_duration(ds)
+duration_hours = total_duration_s / 3600.0
+duration_days = duration_hours / 24.0
+
+# print(f"Total trajectory length: {total_length_m/1000:.2f} km")
+# print(f"Total trajectory duration: {duration_hours:.2f} hours")
+
+line_popup_content = HTML(f"""<b>Total trajectory length:</b> <br>{total_length_m/1000:.2f} km<br><b>Total trajectory duration:</b> <br>{duration_hours:.2f} hours ({duration_days:.2f} days).""")
 line.popup = line_popup_content
 
 # Create the map and add the trajectory line. Center on the mean location.
