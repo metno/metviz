@@ -1,0 +1,39 @@
+services:
+  ncview:
+    image: epinux/ncmet:latest
+    build:
+      context: ./docker
+    environment:
+      # BOKEH_ALLOW_WS_ORIGIN: '*'
+      PORT: '7000'
+      LOG_LEVEL: 'debug'
+      BOKEH_LOG_LEVEL: 'debug'
+      TSPLOT_DOWNLOAD: '/tspt/Download'
+      PROCESSING_ENDPOINT: 'https://met.no'
+      DOWNLOAD_ENDPOINT: 'https://met.no'
+      PYTHONUNBUFFERED: 1
+      PYTHONPATH: '$${PYTHONPATH}:/app:/seaice:/seaicemod'
+      SEAICE_APP_ROOT: '/seaice'
+      SEAICEMOD_APP_ROOT: '/seaicemod'
+    hostname: ncmet
+    networks:
+      - net
+    volumes:
+      - ./metviz/seaicemod:/seaicemod
+      - ./metviz/trj:/trj
+      - ./metviz/seaice:/seaice
+      - ./metviz/trajectory:/trajectory
+      - ./metviz/mapdap:/mapdap
+      - ./metviz/tspt:/tspt
+      - ./metviz/OGC_client:/OGC_client
+      - ./metviz/assets:/assets
+      - ./docker/entrypoint.sh:/entrypoint.sh
+      # - ./credentials.json:/credentials.json:ro
+    entrypoint: ["/entrypoint.sh"]
+
+
+networks:
+  net:
+    driver: overlay
+    attachable: true
+
