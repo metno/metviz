@@ -90,12 +90,6 @@ pn.param.ParamMethod.loading_indicator = True
 
 
 ds = None
-# try:
-#     # phase = int(pn.state.session_args.get('phase')[0])
-#     nc_url = str(pn.state.session_args.get('nc_url')[0].decode("utf8"))
-# except Exception:
-#     # phase = 1
-#     nc_url = 'https://thredds.met.no/thredds/dodsC/alertness/YOPP_supersite/obs/utqiagvik/utqiagvik_obs_timeSeriesProfile_20180701_20180930.nc'
 
 
 def on_server_loaded():
@@ -143,7 +137,8 @@ def validate_url(url):
         valid_url = False
     return valid_url
     
-@pn.cache
+
+@pn.cache(per_session=True, max_items=10, ttl=600)
 def load_data(url):
     try:
         del ds
@@ -239,28 +234,6 @@ def plot_quadmesh(variable_name, dataset, title=None):
         return None
       
 def plot(var, ds, dimension=None, title=None):
-    # try:
-    #     del plot_widget
-    #     gc.collect()
-    # except UnboundLocalError:
-    #     pass
-    # plot_widget = None
-    # try:
-    #     del ds
-    #     gc.collect()
-    # except UnboundLocalError:
-    #     pass
-    
-    #try:
-    #    del plot_container[-1] 
-    #    plot_container[-1] = None
-    #except UnboundLocalError:
-    #    pass
-    #except NameError:
-    #    pass
-    # gc.collect()
-    # if not ds:
-    #     ds, decoded_time, error_log = load_data(url)
     if type(var) == list:
         var = var[0]
         print('i am getting: ', var)
@@ -352,6 +325,8 @@ def plot(var, ds, dimension=None, title=None):
 
 # method to update the plot when a new variable is selected    
 def on_var_select(event):
+    # quadmesh stopped working
+    # need to check
     var = event.obj.value
     result = [key for key, value in mapping_var_names.items() if value == var]
     dimension_group.options = list(ds[result].indexes)
@@ -361,7 +336,6 @@ def on_var_select(event):
         if quadmesh_checkbox:
             quadmesh_checkbox.visible = True
         #quadmesh_plot.visible = True
-
     else:
         #quadmesh_plot.visible = False
         if quadmesh_checkbox:
@@ -533,36 +507,7 @@ def compress_selection(download_link, output_log_widget):
     
     
 def build_metadata_widget():
-    # dataset_metadata_keys = list(ds.attrs.keys())
-    # dataset_metadata_values = list(ds.attrs.values())
-    # dataset_metadata = dict(
-    #     key=dataset_metadata_keys,
-    #     value=dataset_metadata_values,
-    # )
-    # dataset_metadata_source = ColumnDataSource(dataset_metadata)
-
-    # dataset_metadata_columns = [
-    #     TableColumn(field="key", title="key"),
-    #     TableColumn(field="value", title="value"),
-    # ]
-    # metadata_table = DataTable(
-    #     source=dataset_metadata_source,
-    #     columns=dataset_metadata_columns,
-    # )
     metadata_text = dict_to_html_ul(ds.attrs)
-    # metadata_layout = row(
-    #     Spacer(width=30),
-    #     column(
-    #         Div(text=f'<font size = "2" color = "darkslategray" ><b>Metadata<b></font> {metadata_text}'),
-    #         Spacer(height=10),
-    #         #metadata_table,
-    #         sizing_mode="stretch_both",
-    #     ),
-    # )
-    # metadata_layout = Div(text=f'<font size = "2" color = "darkslategray" ><b>Metadata<b></font> {metadata_text}')
-    
-    
-    
     metadata_layout = pn.Row(Spacer(width=10), pn.Column(Spacer(height=120),
                                                 Div(text=f'<font size = "2" color = "darkslategray" ><b>Metadata<b></font> {metadata_text}'), 
                                                 width=400, sizing_mode='fixed'))
@@ -625,87 +570,44 @@ pn.state.on_session_destroyed(callback=on_session_destroyed)
 templates = Jinja2Templates(directory="/app/templates")
 
 
-# url_form_html = """
-#     <div style="max-width: 800px; margin: 40px auto; padding: 20px; background-color: white; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.1);">
-#         <h2 style="color: #003366; margin-bottom: 20px;">Time Series Profile Tool</h2>
-#         <p style="color: #666; margin-bottom: 20px;">Please provide a URL to visualize the data:</p>
-#         <form id="url_form" onsubmit="return submitUrl(event);">
-#             <input type="text" id="url_input" 
-#                    style="width: 100%; padding: 10px; margin-bottom: 10px; border: 1px solid #ccc; border-radius: 4px;" 
-#                    placeholder="Enter data URL..." required>
-#             <div id="url_error" style="color: red; margin-bottom: 10px; display: none;"></div>
-#             <button type="submit" 
-#                     style="background-color: #003366; color: white; padding: 10px 20px; border: none; border-radius: 4px; cursor: pointer;">
-#                 Load Data
-#             </button>
-#         </form>
-#         <div style="margin-top: 20px; font-size: 14px; color: #666;">
-#             <p>Example URL: https://thredds.met.no/thredds/dodsC/arcticdata/...</p>
-#         </div>
-#     </div>
-#     <script>
-#         function submitUrl(event) {
-#             event.preventDefault();
-#             const input = document.getElementById('url_input');
-#             const error = document.getElementById('url_error');
-            
-#             if (!input) {
-#                 console.error('URL input element not found');
-#                 return false;
-#             }
-            
-#             const url = input.value.trim();
-#             if (!url) {
-#                 error.textContent = 'Please enter a URL';
-#                 error.style.display = 'block';
-#                 return false;
-#             }
-            
-#             try {
-#                 const redirectUrl = 'https://ncmet.wps.met.no/tspt?url=' + encodeURIComponent(url);
-#                 window.location.href = redirectUrl;
-#             } catch (e) {
-#                 error.textContent = 'Error processing URL: ' + e.message;
-#                 error.style.display = 'block';
-#                 return false;
-#             }
-#         }
-#     </script>
-#     """
-
-
-
-
-
 if 'url' not in pn.state.session_args:
-    # url = "https://thredds.met.no/thredds/dodsC/arcticdata/frost2netcdf-fixed/SN99910/2020/SN99910_2020-12-01_2020-12-31_time_resolution_PT1H.nc"
-    #error_log = Div(text=f"""<br><b>URL parameter not provided</b><br>""")
-    #error_log = Div(text=er)
-    #bokeh_pane = pn.pane.Bokeh(
-    #        column(error_log),
-    #    ).servable()
-    #bokeh_pane
-    #url = []
     javascript = Javascript()
+    # add a list of example urls below the input box
+    Resources = {
+        "Trajectory 1": "https://thredds.met.no/thredds/dodsC/arcticdata/arctic-passion/UiT-drifters/AWS-ITO/aws_2022.nc",
+        "Trajectory 2": "https://thredds.met.no/thredds/dodsC/arcticdata/arctic-passion/UiT-drifters/SIMBA/simba-510_air-temperature2022.nc",
+        "Trajectory 3": "https://thredds.niva.no/thredds/dodsC/datasets/norsoop/color_fantasy/merged_acdd_color_fantasy.nc",
+        "Trajectory 4": "https://thredds.niva.no/thredds/dodsC/datasets/nrt/color_fantasy.nc",
+    }
+    # add the resources to a table widget
+    # AttributeError: 'dict' object has no attribute 'index'
+    resources_df = pd.DataFrame.from_dict(Resources, orient='index', columns=['URL'])
+    resources_table = pn.widgets.DataFrame(
+        resources_df,
+        name="Example URLs",
+        width=600,
+        height=200
+    )
+    # add a button to add selected row url to the input box
+    add_button = pn.widgets.Button(name="Add URL", button_type="primary")
+    # method to add the selected row url to the input box
+    def add_url(event):
+        selected = resources_table.selection
+        if selected:
+            url_input.value = resources_df.iloc[selected[0]]['URL']
+
+    add_button.on_click(add_url)
+
     # add a line editing widget for the url input
     url_input = pn.widgets.TextInput(
         name="Data URL",
         placeholder="Enter data URL...",
         width=600
     )
-
+    
+        
     url_button = pn.widgets.Button(name="Load Data", button_type="primary")
-    
 
-    
-    # menu_items = [
-    #     ("Twitter", "https://twitter.com/Panel_org"),
-    #     ("LinkedIn", "https://www.linkedin.com/company/panel-org/"),
-    #     ("Discourse", "https://discourse.holoviz.org/"),
-    # ]
-    # menu_button = pn.widgets.MenuButton(
-    #     name="Dropdown", items=menu_items, button_type="primary"
-    # )
 
     # connect the load Data button to append a new entry into the javascript widget
     @pn.depends(url_button.param.clicks, watch=True)
@@ -725,6 +627,8 @@ if 'url' not in pn.state.session_args:
         javascript,
         url_input,
         url_button,
+        resources_table,
+        add_button,
     ).servable()
 else:
     url = pn.state.session_args.get('url')[0].decode("utf8")
@@ -793,20 +697,10 @@ else:
         
         
     if ds:
-        # if ds.attrs['featureType'] == 'timeSeries':
-        #     var_coord = [i for i in ds.coords if ds.coords.dtypes[i] == np.dtype('<M8[ns]')]
-        #     time_coord = True
-        # else:
-        #     time_coord = False
-        #     var_coord = list(ds.coords)
-
+        # find plottable variables
         plottable_vars = [j for j in ds if len([value for value in list(ds[j].coords) if value in list(ds.dims)]) >= 1]
-
         # plottable_vars = [i for i in plottable_vars if len(ds[i].dims) == len(ds.indexes)]
-
         plottable_vars = [i for i in plottable_vars if safe_check(i)]
-
-
         # build a dictionary of variables and their long names
         print("plottable_vars:", plottable_vars )
         mapping_var_names = {}
@@ -832,13 +726,6 @@ else:
                 quadmesh_checkbox.visible = False  
         else:
             quadmesh_checkbox = None
-        
-
-
-
-        
-
-        
         
     if ds:
         # Export Widgets
@@ -866,7 +753,6 @@ else:
         #if quadmesh_checkbox:
         #    quadmesh_checkbox.param.watch(on_quadmesh_select, parameter_names=['value'])
         
-
         selected_var = [key for key, value in mapping_var_names.items() if value == variables_selector.value]
         dimension = dimension_group.value
 
@@ -876,14 +762,6 @@ else:
         quadmesh_plot = pn.Row(sizing_mode='scale_both')
         quadmesh_plot.visible = False
         plot_container = pn.Column(pn.Row(variables_selector, pn.Row(Div(text=f'<font size = "2" color = "darkslategray" >Dimension</font>'), dimension_group), frequency_selector, buttons), quadmesh_checkbox, quadmesh_plot, plot_plot, Spacer(height=10), sizing_mode='scale_both') # , sizing_mode='scale_both'
-
-        # main_app = pn.Row(plot_container, Spacer(width=10), downloader, metadata_layout).servable()
-
-
-        # jinja_template = env.get_template('template.html')
-        # tmpl = pn.Template(jinja_template)
-
-        # tmpl.add_variable('app_title', '<center><h1>NCMET</h1></center>')
 
         main_app = pn.Row(plot_container, 
                         Spacer(width=10), 
