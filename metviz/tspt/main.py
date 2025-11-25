@@ -771,15 +771,17 @@ else:
         # tmpl.add_panel('A',  main_app)
         # tmpl.servable()
 
-        ACCENT_BASE_COLOR = "#003366"
-        pn.extension(sizing_mode="stretch_both")
-        template = pn.template.BootstrapTemplate(
-            site=" ADC NC-CF Data Visualization ",
-            # site_url="https://www.northwestknowledge.net/adc/",
-            favicon="/assets/ADC_logo.png",
-            title="Time Series Profile Tool",
-            logo="/assets/ADC_logo.png",
-            header_background=ACCENT_BASE_COLOR,
-            # accent_base_color=ACCENT_BASE_COLOR,
-            main=[main_app],
-        ).servable()
+        # ACCENT_BASE_COLOR = "#003366"
+        # pn.extension(sizing_mode="stretch_both")
+        # template = pn.template.BootstrapTemplate(
+        #     site=" ADC NC-CF Data Visualization ",
+        #     # site_url="https://www.northwestknowledge.net/adc/",
+        #     favicon="/assets/ADC_logo.png",
+        #     title="Time Series Profile Tool",
+        #     logo="/assets/ADC_logo.png",
+        #     header_background=ACCENT_BASE_COLOR,
+        #     # accent_base_color=ACCENT_BASE_COLOR,
+        #     main=[main_app],
+        # ).servable()
+
+        main_app.servable()
