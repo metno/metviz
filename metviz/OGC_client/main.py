@@ -812,13 +812,15 @@ component = pn.Column(pn.Row(show_options_button, toolbar), pn.Row(layer_manager
                 height_policy='max', sizing_mode="stretch_both"))
 
 
-template = pn.template.BootstrapTemplate(
-    site=" ADC NC-CF Data Visualization ",
-    # site_url="https://www.northwestknowledge.net/adc/",
-    favicon="/assets/ADC_logo.png",
-    title="OGC Map Widget Demo",
-    logo="/assets/ADC_logo.png",
-    header_background=ACCENT_BASE_COLOR,
-    #accent_base_color=ACCENT_BASE_COLOR,
-    main=[component],
-).servable()
+# template = pn.template.BootstrapTemplate(
+#     site=" ADC NC-CF Data Visualization ",
+#     # site_url="https://www.northwestknowledge.net/adc/",
+#     favicon="/assets/ADC_logo.png",
+#     title="OGC Map Widget Demo",
+#     logo="/assets/ADC_logo.png",
+#     header_background=ACCENT_BASE_COLOR,
+#     #accent_base_color=ACCENT_BASE_COLOR,
+#     main=[component],
+# ).servable()
+
+component.servable()
