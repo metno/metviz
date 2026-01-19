@@ -27,7 +27,7 @@ services:
       # - ./metviz/trajectory:/trajectory
       # - ./metviz/mapdap:/mapdap
       # - ./metviz/tspt:/tspt
-      - ./metviz/tspt:/TSP
+      - ./metviz/TSP:/TSP
       - ./metviz/OGC_client:/OGC_client
       - ./metviz/assets:/assets
       - ./docker/entrypoint.sh:/entrypoint.sh
