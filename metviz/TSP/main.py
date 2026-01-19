@@ -324,10 +324,6 @@ def safe_check(var):
         
 def export_selection(event):
     """docstring"""
-    # print(box.values)
-    # start = ds.index.searchsorted(date_time_range_slider.value[0])
-    # end = ds.index.searchsorted(date_time_range_slider.value[1])
-    # event_log.text = f"{str(wbx.value)} <br> {str(date_time_range_slider.value)}"
     select_output_format_mapping = {'NetCDF':'nc', 'CSV':'csv', 'Parquet':'pq'}
     with pn.param.set_values(main_app, loading=True):
         export_format = select_output_format_mapping[select_output_format.value]
@@ -335,14 +331,10 @@ def export_selection(event):
         if frequency_selector is not None and frequency_selector.visible and frequency_selector.value != 'Raw':
             resampler = False
             resampler_frequency = 'raw '
-            #print(export_resampling)
-            #print(export_resampling.value)
         else:
             if frequency_selector is not None and frequency_selector.visible and frequency_selector.value != "--":
                 resampler = True
                 resampler_frequency = frequency_selector.value
-                #print(export_resampling)
-                #print(export_resampling.value)
             else:
                 resampler = False
                 resampler_frequency = 'raw'
@@ -354,7 +346,6 @@ def export_selection(event):
         selected_variables = [i.name for i in wbx if i.value == True]
         # event_log.text = f"{str(selected_variables)} <br> {time_range} <br> {export_format} <br> {resampler}"
         
-
         data = {
             "url": "https://thredds.met.no/thredds/dodsC/alertness/YOPP_supersite/obs/utqiagvik/utqiagvik_obs_timeSeriesProfileSonde_20180201_20180331.nc",
             "variables": [
@@ -371,12 +362,7 @@ def export_selection(event):
             "resampling_frequency": "raw",
             "output_format": "nc"
             }
-        # download_link = get_download_link(data)
-        
-        # print(download_link)
-        
-        
-        # time_range = [str(i) for i in date_time_range_slider.value]
+
         export_dataspec = {
             "url": str(url),
             "variables": selected_variables,
@@ -397,11 +383,6 @@ def export_selection(event):
             functools.partial(
                 compress_selection, download_link=download_link, output_log_widget=event_log))
         
-        # print(json.dump(export_dataspec))
-        #print(export_dataspec)
-        #json_object = json.dumps(export_dataspec, indent = 4)
-        #print(json_object)
-        # slice the ds by selecting the variables fro the checkbox and slicing along the time dimension from the timerange slider (if available)
 
 
 def compress_selection(download_link, output_log_widget):
@@ -603,8 +584,7 @@ else:
         export_button, wbx, date_time_range_slider, export_options_button, event_log, select_output_format, export_resampling = build_download_widget(ds, mapping_var_names, frequency_selector)
         export_options_button.on_click(export_selection)
         
-        # export_options_button
-        # export_options_button.on_click(export_selection)
+
         download_header = Div(text='<font size = "2" color = "darkslategray" ><b>Data Export<b></font> <br> Variable Selection')
         # download_header.visible = False
         # Metadata Widgets
