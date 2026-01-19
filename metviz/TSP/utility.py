@@ -407,11 +407,16 @@ def build_download_widget(ds, mapping_var_names, frequency_selector=True):
 
 def build_metadata_widget(attrs):
     metadata_text = dict_to_html_ul(attrs)
-    metadata_layout = pn.Row(Spacer(width=10), pn.Column(Spacer(height=120),
-                                                Div(text=f'<font size = "2" color = "darkslategray" ><b>Metadata<b></font> {metadata_text}'), 
-                                                width=400, sizing_mode='fixed'))
+    # metadata_layout = pn.Row(Spacer(width=10), pn.Column(Spacer(height=120),
+    #                                             Div(text=f'<font size = "2" color = "darkslategray" ><b>Metadata<b></font> {metadata_text}'), 
+    #                                             width=400, sizing_mode='fixed'))
     
-    metadata_layout.visible = False
+    # metadata_layout.visible = False
+
+    metadata_layout = Div(
+        text=f'<font size = "2" color = "darkslategray" ><b>Metadata<b></font> {metadata_text}',
+        width=500,
+    )
 
     metadata_button = Button(
         label="Metadata",

@@ -16,8 +16,7 @@ from bokeh.models import HoverTool, Div, Button
 import numpy as np
 from geographiclib.geodesic import Geodesic
 
-from utility import dict_to_html_ul
-
+from utility import dict_to_html_ul, build_metadata_widget
 
 pn.extension("ipywidgets", sizing_mode="stretch_width")
 hv.extension("bokeh")
@@ -138,13 +137,8 @@ throttle_checkbox = pn.widgets.Checkbox(
 )
 
 # Create the metadata HTML element together with the button used to show/hide it.
-metadata = dict_to_html_ul(ds.attrs)
-metadata_layout = Div(
-    text=f'<font size = "2" color = "darkslategray" ><b>Metadata<b></font> {metadata}',
-    width=500,
-)
-metadata_button = Button(label="Metadata")
-
+metadata_layout, metadata_button = build_metadata_widget(ds.attrs)
+metadata_layout.visible = False
 
 # Custom CRS for the northern polar stereographic projection used by the WMS.
 gebco_polar_stereo_north_crs = {
