@@ -12,9 +12,11 @@ import panel as pn
 import xarray as xr
 from ipywidgets import HTML
 from ipyleaflet import Map, Marker, Polyline, WMSLayer, Popup
-from bokeh.models import HoverTool, CustomJSHover
+from bokeh.models import HoverTool, CustomJSHover, Div, Button
 import numpy as np
 from geographiclib.geodesic import Geodesic
+
+from utility import dict_to_html_ul
 
 
 pn.extension("ipywidgets", sizing_mode="stretch_width")
@@ -129,6 +131,11 @@ index_value = pn.widgets.TextInput(name="Location", value="index", width=200)
 throttle_checkbox = pn.widgets.Checkbox(
     name="on-release", value=False, width=100
 )
+
+# Create the metadata HTML element together with the button used to show/hide it.
+metadata = dict_to_html_ul(ds.attrs)
+metadata_layout = Div(text=f'<font size = "2" color = "darkslategray" ><b>Metadata<b></font> {metadata}', width=500)
+metadata_button = Button(label="Metadata")
 
 
 # Custom CRS for the northern polar stereographic projection used by the WMS.
@@ -325,17 +332,33 @@ get_idx = pn.bind(
     datetime_slider.param.value,
 )
 
+def metadata_handler(new):
+    if metadata_layout.visible:
+        metadata_layout.visible = False
+    else:
+        metadata_layout.visible = True
+
+# Is called when the page has finished loading to hide the metadata (used as a workaround to get a proper layout).
+def on_load():
+    metadata_layout.visible = False
+
+
 # Now bind `makeplot` to the variable selector and the resolved index value.
 bound_function = pn.bind(makeplot, variable=var_select, idx=get_idx)
 dmap = hv.DynamicMap(bound_function)
 
+# Handle metadata callbacks (both the button that shows/hides the metadata, and the panel callback that hides the
+# metadata once the page has loaded. The latter is a workaround to get a proper layout where the metadata only takes
+# up the set amount of width it is supposed to take up.
+metadata_button.on_event('button_click', metadata_handler)
+pn.state.onload(on_load)
+
 
 # Compose the layout: widgets on top, then the plot and map together
 layout = pn.Column(
-    pn.Row(var_select, datetime_slider, throttle_checkbox, index_value),
-    pn.Column(dmap, m, sizing_mode="scale_both"),
+    pn.Row(var_select, datetime_slider, throttle_checkbox, index_value, metadata_button),
+    pn.Row(pn.Column(dmap, m, sizing_mode="scale_both"), metadata_layout, sizing_mode='scale_both'),
 )
-
 
 # Make the layout servable in a Panel server or notebook
 layout.servable()
