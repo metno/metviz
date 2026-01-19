@@ -251,7 +251,62 @@ def load_data(url):
     return ds, decoded_time, error_log, monotonic, featureType
 
 
-    
+def show_hide_widget(event=None, widget=None):
+    """Toggle visibility of a download widget.
+
+    Accepts either an event (from `.on_click`) or a widget object passed directly
+    via the `widget` keyword. Falls back to the global `downloader` if neither
+    is available.
+    """
+    # determine the target widget to toggle
+    target = widget
+    if target is None:
+        # event may be a Bokeh/Panel event with different attributes
+        try:
+            target = getattr(event, 'obj', None) or getattr(event, 'sender', None)
+        except Exception:
+            print("first exception in show_hide_widget")
+            target = None
+    # if target is None:
+    #     # final fallback to the global downloader
+    #     target = downloader
+
+    # try:
+    #     result = [key for key, value in mapping_var_names.items() if value == variables_selector.value]
+    # except Exception:
+    #     print("second exception in show_hide_widget")
+    #     result = None
+
+    # hide export resampling option if the dataset does not have a time coord
+    # try:
+    #     time_dim = [i for i in ds.coords if ds.coords.dtypes[i] == np.dtype('<M8[ns]')][0]
+    #     if result and time_dim not in ds[result].indexes:
+    #         export_resampling.visible = False
+    # except Exception:
+    #     print("third exception in show_hide_widget")
+    #     # if anything goes wrong, silently skip adjusting resampling visibility
+    #     pass
+
+    try:
+        if target.visible:
+            target.visible = False
+        else:
+            # This will not work,
+            # metadata_button.on_click(functools.partial(show_hide_widget, widget=metadata_layout))
+            # needs to be changed to use functools.partial to pass both widget directly, 
+            # the one being revealed and the one to be hidden
+            # ensure metadata is hidden when showing the downloader
+            # try:
+            #     metadata_layout.visible = False
+            # except Exception:
+            #     print("fourth exception in show_hide_widget")
+            #     pass
+            target.visible = True
+    except Exception:
+        print("fifth exception in show_hide_widget")
+        # best-effort toggle: if the target doesn't have .visible, ignore
+        pass
+
 def build_download_widget(ds, mapping_var_names, frequency_selector=True):
     """docstring"""  
     event_log = Div(text=f"""<br><br> <br><br>""")

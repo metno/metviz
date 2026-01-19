@@ -40,7 +40,7 @@ import xarray as xr
 import panel as pn
 import numpy as np
 import holoviews as hv
-from utility import ModelURL, pandas_frequency_offsets, get_download_link, dict_to_html_ul, load_data, validate_url, build_metadata_widget, build_download_widget
+from utility import ModelURL, pandas_frequency_offsets, get_download_link, dict_to_html_ul, load_data, validate_url, build_metadata_widget, build_download_widget, show_hide_widget
 from js_util import Javascript
 
 from pydantic import ValidationError
@@ -364,53 +364,6 @@ def safe_check(var):
         print(f"Error processing {var}: {e}")
         return False
     
- 
-def show_hide_widget(event=None, widget=None):
-    """Toggle visibility of a download widget.
-
-    Accepts either an event (from `.on_click`) or a widget object passed directly
-    via the `widget` keyword. Falls back to the global `downloader` if neither
-    is available.
-    """
-    # determine the target widget to toggle
-    target = widget
-    if target is None:
-        # event may be a Bokeh/Panel event with different attributes
-        try:
-            target = getattr(event, 'obj', None) or getattr(event, 'sender', None)
-        except Exception:
-            target = None
-    if target is None:
-        # final fallback to the global downloader
-        target = downloader
-
-    try:
-        result = [key for key, value in mapping_var_names.items() if value == variables_selector.value]
-    except Exception:
-        result = None
-
-    # hide export resampling option if the dataset does not have a time coord
-    try:
-        time_dim = [i for i in ds.coords if ds.coords.dtypes[i] == np.dtype('<M8[ns]')][0]
-        if result and time_dim not in ds[result].indexes:
-            export_resampling.visible = False
-    except Exception:
-        # if anything goes wrong, silently skip adjusting resampling visibility
-        pass
-
-    try:
-        if target.visible:
-            target.visible = False
-        else:
-            # ensure metadata is hidden when showing the downloader
-            try:
-                metadata_layout.visible = False
-            except Exception:
-                pass
-            target.visible = True
-    except Exception:
-        # best-effort toggle: if the target doesn't have .visible, ignore
-        pass
 
         
 def export_selection(event):
