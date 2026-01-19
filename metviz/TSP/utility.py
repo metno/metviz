@@ -111,6 +111,25 @@ def validate_url(url):
         valid_url = False
     return valid_url
 
+def validate_opendap(url):
+    """Validate if a url is a valid OPeNDAP url
+
+    Args:
+        url (str): url to validate as OPeNDAP
+    Returns:
+        bool: True if valid OPeNDAP url, False otherwise
+    """
+    try:
+        nc_url = str(url)
+        # try to load the data trough xarray
+        xr.open_dataset(nc_url, decode_times=False)
+        valid_opendap = True
+    except TypeError:
+        valid_opendap = False
+    except OSError:
+        valid_opendap = False
+    return valid_opendap
+
 
 pandas_frequency_offsets = {
             "Hourly": "h",

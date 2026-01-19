@@ -40,17 +40,16 @@ import xarray as xr
 import panel as pn
 import numpy as np
 import holoviews as hv
-from utility import ModelURL, pandas_frequency_offsets, get_download_link, dict_to_html_ul, load_data, validate_url, build_metadata_widget, build_download_widget, show_hide_widget, on_server_loaded, on_session_created, on_session_destroyed
+from utility import ModelURL, pandas_frequency_offsets, get_download_link, load_data, validate_url, build_metadata_widget, build_download_widget, show_hide_widget, on_server_loaded, on_session_destroyed, validate_opendap
 from js_util import Javascript
 
-from pydantic import ValidationError
 from starlette.templating import Jinja2Templates
 import json
 import sys
 from bokeh.models import Button, Div
 from bokeh.layouts import column, Spacer
 import pandas as pd
-from bokeh.models.formatters import DatetimeTickFormatter
+# from bokeh.models.formatters import DatetimeTickFormatter
 
 
 from jinja2 import Environment, FileSystemLoader
@@ -65,38 +64,7 @@ pn.param.ParamMethod.loading_indicator = True
 
 ds = None
 
-
-# def on_server_loaded():
-#     print("server loaded")
-#     print("")
-#     sys.stdout.flush()
     
-
-# def on_session_created(session_context):
-#     print("session created")
-#     print("")
-#     sys.stdout.flush()
-
-
-# def on_session_destroyed(session_context):
-#     print("session destroyed")
-#     print("")
-#     print(dir(session_context))
-#     try:
-#         del ds
-#         gc.collect()
-#     except UnboundLocalError:
-#         pass
-#     try:
-#         del plot_widget
-#         gc.collect()
-#     except UnboundLocalError:
-#         pass
-#     plot_widget = None
-#     gc.collect()
-#     sys.stdout.flush()
-    
-
 
 def show_hide_error(event):
     """docstring"""
@@ -546,8 +514,11 @@ else:
 
     valid_url = validate_url(url)
 
+    # check if the url points to a valid dataset
+    valid_url = validate_opendap(url)
+
     if not valid_url:
-        error_log = Div(text=f"""<br><b>Invalid URL:</b><br>   {url} """)
+        error_log = Div(text=f"""<br><b>Invalid URL:</b><br>   {url}  <br><br> Please provide a valid OPeNDAP URL.""")
         bokeh_pane = pn.pane.Bokeh(
                 column(error_log),
             ).servable()
@@ -569,7 +540,8 @@ else:
                 height=50,
                 width=50,
             )  # , width_policy='fixed'
-            error_log_button.on_click(show_hide_error)
+            # error_log_button.on_click(show_hide_error)
+            error_log_button.on_click(functools.partial(show_hide_widget, widget=error_log))
 
             print(newhtml)
             bokeh_pane = pn.pane.Bokeh(
