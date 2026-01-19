@@ -40,153 +40,32 @@ import xarray as xr
 import panel as pn
 import numpy as np
 import holoviews as hv
-from utility import ModelURL, pandas_frequency_offsets, get_download_link, dict_to_html_ul
-from pydantic import ValidationError
+from utility import ModelURL, pandas_frequency_offsets, get_download_link, load_data, validate_url, build_metadata_widget, build_download_widget, show_hide_widget, on_server_loaded, on_session_destroyed, validate_opendap
+from js_util import Javascript
+
 from starlette.templating import Jinja2Templates
 import json
 import sys
 from bokeh.models import Button, Div
 from bokeh.layouts import column, Spacer
 import pandas as pd
-from bokeh.models.formatters import DatetimeTickFormatter
-
-
+# from bokeh.models.formatters import DatetimeTickFormatter
 from jinja2 import Environment, FileSystemLoader
 import gc
 import param
 
-
-class Javascript(pn.reactive.ReactiveHTML):
-    value = param.String(
-        default="",
-        allow_None=False,
-        doc="""Javascript code. When the value is set it will be evaluated in the browser.
-        Afterwards the value will be set to ''""",
-    )
-
-    def __init__(self):
-        super().__init__(height=0, width=0, margin=0)
-
-    def eval(self, value: str):
-        self.value = value
-
-    _template = "<div id='pn-container'></div>"
-    _scripts = {
-        "value": """
-        console.log(data.value)
-        
-        if (data.value!=''){
-            eval(data.value)
-            data.value=""
-        }"""
-    }
-
-
-
-
+# pn.extension(sizing_mode="scale_both", loading_indicator=True)
 
 env = Environment(loader=FileSystemLoader('/assets'))
 pn.param.ParamMethod.loading_indicator = True
 
-
 ds = None
-# try:
-#     # phase = int(pn.state.session_args.get('phase')[0])
-#     nc_url = str(pn.state.session_args.get('nc_url')[0].decode("utf8"))
-# except Exception:
-#     # phase = 1
-#     nc_url = 'https://thredds.met.no/thredds/dodsC/alertness/YOPP_supersite/obs/utqiagvik/utqiagvik_obs_timeSeriesProfile_20180701_20180930.nc'
-
-
-def on_server_loaded():
-    print("server loaded")
-    print("")
-    sys.stdout.flush()
-    
-
-def on_session_created(session_context):
-    print("session created")
-    print("")
-    sys.stdout.flush()
-
-
-def on_session_destroyed(session_context):
-    print("session destroyed")
-    print("")
-    print(dir(session_context))
-    try:
-        del ds
-        gc.collect()
-    except UnboundLocalError:
-        pass
-    try:
-        del plot_widget
-        gc.collect()
-    except UnboundLocalError:
-        pass
-    plot_widget = None
-    gc.collect()
-    sys.stdout.flush()
-    
-    
-
-def validate_url(url):
-    try:
-        nc_url = str(url)
-        try:
-            ModelURL(url=nc_url)
-            valid_url = True
-        except ValidationError as e:
-            print(e)
-            valid_url = False
-    except TypeError:
-        valid_url = False
-    return valid_url
-    
-@pn.cache
-def load_data(url):
-    try:
-        del ds
-        gc.collect()
-    except UnboundLocalError:
-        pass
-    ds = None
-    decoded_time = False
-    error_log = None
-    try:
-        ds = xr.open_dataset(str(url).strip())
-        decoded_time=True
-    except ValueError as e:
-        print(e)
-        ds = xr.open_dataset(str(url).strip(), decode_times=False)
-        decoded_time=False
-        error_log = e
-    except OSError as e:
-        error_log = e
-    if ds and not ds.coords:
-        erdapp_uglyness = list(dict(xr.open_dataset(url).dims).keys())[0]
-        renamed_vars = {i:i.replace(erdapp_uglyness+".", "") for i in list(xr.open_dataset(url).variables.keys())}
-        new_nc_url = url+'?'+'time,'+','.join(list(xr.open_dataset(url).variables)).replace(f"{erdapp_uglyness}.", "").replace(f"time,", "")
-        del ds
-        gc.collect()
-        ds = xr.open_dataset(new_nc_url)
-        ds = ds.set_coords(f"{erdapp_uglyness}.time")
-        ds = ds.swap_dims(s=f"time")
-        ds = ds.set_xindex(f"{erdapp_uglyness}.time")
-        ds = ds.rename_vars(renamed_vars)
-    return ds, decoded_time, error_log
-
-
-def show_hide_error(event):
-    """docstring"""
-    if error_log.visible:
-        error_log.visible = False
-    else:
-        error_log.visible = True
-    
 
 
 def plot_quadmesh(variable_name, dataset, title=None):
+    print(f"""plotting quadmesh for var: {variable_name}, 
+          with dataset dims: {dataset[variable_name].dims}, 
+          and indexes: {dataset[variable_name].indexes}""")
     da = dataset[variable_name]
     result = {
         'time' if pd.api.types.is_datetime64_any_dtype(ds[variable_name][i].values) else 'value': i
@@ -237,30 +116,18 @@ def plot_quadmesh(variable_name, dataset, title=None):
     else:
         print(f"Variable {variable_name} does not have 'time' and 'depth' dimensions.")
         return None
-      
-def plot(var, ds, dimension=None, title=None):
-    # try:
-    #     del plot_widget
-    #     gc.collect()
-    # except UnboundLocalError:
-    #     pass
-    # plot_widget = None
-    # try:
-    #     del ds
-    #     gc.collect()
-    # except UnboundLocalError:
-    #     pass
-    
-    #try:
-    #    del plot_container[-1] 
-    #    plot_container[-1] = None
-    #except UnboundLocalError:
-    #    pass
-    #except NameError:
-    #    pass
-    # gc.collect()
-    # if not ds:
-    #     ds, decoded_time, error_log = load_data(url)
+
+
+def plot(var, ds, dimension=None, title=None, frequency=None, monotonic=None, featureType=None):
+    # frequency selector should be handled outside the plot method
+    # which should take as input an optional resampling frequency instead of the frequency selector widget
+
+    # do not change 'widget_location': 'top' - the code uses indexes to detect plot canvas and slider 
+    axis_arguments = {'grid':True, 
+                      'x': dimension, 
+                      'title': title, 
+                      'responsive': True, 
+                      'widget_location': 'top'}
     if type(var) == list:
         var = var[0]
         print('i am getting: ', var)
@@ -284,12 +151,17 @@ def plot(var, ds, dimension=None, title=None):
         featureType = ds[var].attrs['cdm_data_type'].lower()
     else:
         featureType = None
-    is_monotonic = False
+    #is_monotonic = False
+
     if featureType == 'timeseries':
         var_coord = [i for i in ds.coords if ds.coords.dtypes[i] == np.dtype('<M8[ns]')]
-        coords_values = ds.coords[var_coord[0]].values[::-1]
-        is_monotonic = all(coords_values[i] <= coords_values[i + 1] for i in range(len(coords_values) - 1)) or all(coords_values[i] >= coords_values[i + 1] for i in range(len(coords_values) - 1))
-        if is_monotonic:
+        time_coord = True
+    else:
+        time_coord = False
+        var_coord = list(ds.coords)
+
+    if featureType == 'timeseries':
+        if monotonic:
             frequency_selector.visible = True
         else:
             frequency_selector.visible = False
@@ -298,9 +170,9 @@ def plot(var, ds, dimension=None, title=None):
         # https://github.com/holoviz/hvplot/issues/1325
         axis_arguments = {'grid':True, 'x': dimension, 'title': title, 'responsive': True, 'widget_location': 'top'}
         print(axis_arguments)
-        if is_monotonic and frequency_selector.value != "--":
+        if monotonic and frequency != "--":
             print('data resampling requested')
-            resampling_freq = {var_coord[0]: pandas_frequency_offsets[frequency_selector.value]}
+            resampling_freq = {var_coord[0]: pandas_frequency_offsets[frequency]}
             # .where(ds_raw != 9.96921e36)
             plot_widget = ds[var].where(ds[var] != 9.96921e36).resample(**resampling_freq).mean().hvplot.line(**axis_arguments)
         else:
@@ -323,35 +195,51 @@ def plot(var, ds, dimension=None, title=None):
             x = dimension
             # y = ds[var] 
             y = var
-        axis_arguments = {'x': x, 'y': y, 'grid':True, 'title': title, 'widget_location': 'top', 'responsive': True}
+        # axis_arguments = {'x': x, 'y': y, 'grid':True, 'title': title, 'widget_location': 'top', 'responsive': True}
+        axis_arguments['x'] = x
+        axis_arguments['y'] = y
         print(axis_arguments)
         # axis_arguments = {'x': ds[var], 'y': dimension, 'grid':True, 'title': title, 'widget_location': 'bottom', 'responsive': True}
+        if ds[var].attrs.get('positive', '') == 'down':
+            invert_yaxes = True
+        if ds[dimension].attrs.get('positive', '') == 'down':
+            invert_yaxes = True
         try:
             plot_widget =  ds[var].where(ds[var] != 9.96921e36).hvplot.line(**axis_arguments)
             if invert_yaxes:
-                plot_widget[1].object.opts(invert_yaxis=True)
+                plot_widget[-1].object.opts(invert_yaxis=True)
         except TypeError:
             print('TypeError')
-            axis_arguments = {'grid':True, 'y': dimension, 'title': title, 'widget_location': 'top', 'responsive': True}
+            axis_arguments['y'] = dimension
+            # axis_arguments = {'grid':True, 'y': dimension, 'title': title, 'widget_location': 'top', 'responsive': True}
             plot_widget =  ds[var].where(ds[var] != 9.96921e36).hvplot.line(**axis_arguments)
             if invert_yaxes:
-                plot_widget[1].object.opts(invert_yaxis=True)
+                plot_widget[-1].object.opts(invert_yaxis=True)
         except ValueError:
             print('ValueError')
             if 'time' not in dimension.lower():
                 x = var 
             else:
                 y = var 
-            axis_arguments = {'x': x, 'y': y, 'grid':True, 'title': title, 'widget_location': 'top', 'responsive': True}
+            axis_arguments['x'] = x
+            axis_arguments['y'] = y
+            # axis_arguments = {'x': x, 'y': y, 'grid':True, 'title': title, 'widget_location': 'top', 'responsive': True}
             plot_widget =  ds[var].where(ds[var] != 9.96921e36).hvplot.line(**axis_arguments)
             if invert_yaxes:
-                plot_widget[1].object.opts(invert_yaxis=True)
+                plot_widget[-1].object.opts(invert_yaxis=True)
+        # axis_arguments['responsive'] = False
+        # axis_arguments['widget_location'] = "bottom"
         print('axis_arguments:', axis_arguments)
+        print('invert_yaxes:', invert_yaxes)
+        # set the height of the plot widget (slider to tune the dimension value) to 60 
+        plot_widget[0].height = 60
         return plot_widget        
 
 
 # method to update the plot when a new variable is selected    
 def on_var_select(event):
+    # quadmesh stopped working
+    # need to check
     var = event.obj.value
     result = [key for key, value in mapping_var_names.items() if value == var]
     dimension_group.options = list(ds[result].indexes)
@@ -361,7 +249,6 @@ def on_var_select(event):
         if quadmesh_checkbox:
             quadmesh_checkbox.visible = True
         #quadmesh_plot.visible = True
-
     else:
         #quadmesh_plot.visible = False
         if quadmesh_checkbox:
@@ -370,9 +257,10 @@ def on_var_select(event):
     with pn.param.set_values(main_app, loading=True):
         # print(dir(plot_container[-1]))
         # print(plot_container[-1][1].object.range(dimension_group.value))
-        plot_container[-2] = plot(var=result, ds=ds, dimension=dimension_group.value, title=var)
+        plot_container[-2] = plot(var=result, ds=ds, dimension=dimension_group.value, frequency=frequency_selector.value, title=var, monotonic=monotonic, featureType=featureType)
         print(f'selected {result}')
         # print(dir(plot_container[-1][1].object))
+        
         if quadmesh_checkbox:
             if quadmesh_checkbox.value:
                 if len(quadmesh_plot) >= 1:
@@ -385,17 +273,26 @@ def on_dimension_select(event):
     dimension = event.obj.value
     with pn.param.set_values(main_app, loading=True):
         selected_var = [key for key, value in mapping_var_names.items() if value == variables_selector.value]
-        plot_container[-2] = plot(var=selected_var, ds=ds, dimension=dimension , title=variables_selector.value)
+        plot_container[-2] = plot(var=selected_var, ds=ds, dimension=dimension , title=variables_selector.value, frequency=frequency_selector.value, monotonic=monotonic, featureType=featureType)
         print(f'selected {dimension}')
+        # print(dir(plot_container[-2]))
+        # print(plot_container[-2].height, plot_container[-2].height_policy)
+        # plot_container.height_policy='max'
+        # print(dir(plot_container))
+        
         
 def on_frequency_select(event):
+    # frequency selector should be handled outside the plot method
+    # which should take as input an optional resampling frequency instead of the frequency selector widget
+    # this method should just trigger a re-plot with the new frequency
     frequency = event.obj.value
     var = variables_selector.value
     result = [key for key, value in mapping_var_names.items() if value == var]
     with pn.param.set_values(main_app, loading=True):
-        plot_container[-2] = plot(var=result, ds=ds, title=var)
+        plot_container[-2] = plot(var=result, ds=ds, title=var, dimension=dimension_group.value, frequency=frequency, monotonic=monotonic, featureType=featureType)
         print(f'selected {result} \n with frequency {frequency}') 
-        
+
+
 def on_quadmesh_select(event):
     with pn.param.set_values(main_app, loading=True):
         if event.obj.value:
@@ -413,6 +310,7 @@ def on_quadmesh_select(event):
             quadmesh_plot.pop(-1)
         print(f'quadmesh: {event.obj.value}')   
 
+
 def safe_check(var):
     try:
         ds[var].values
@@ -422,60 +320,32 @@ def safe_check(var):
         print(f"Error processing {var}: {e}")
         return False
     
- 
-def show_hide_export_widget(event):
-    print(downloader.visible)
-    result = [key for key, value in mapping_var_names.items() if value == variables_selector.value]
-    if [i for i in ds.coords if ds.coords.dtypes[i] == np.dtype('<M8[ns]')][0] not in ds[result].indexes:
-        print("this shoiuld remove the resampling data selector for raw / resampled")
-        export_resampling.visible = False
-    if downloader.visible:
-        downloader.visible = False
-    else:
-        metadata_layout.visible = False
-        downloader.visible = True 
 
-        
-def show_hide_metadata_widget(event):
-    """docstring"""
-    if metadata_layout.visible:
-        metadata_layout.visible = False
-    else:
-        metadata_layout.visible = True
-        downloader.visible = False
         
 def export_selection(event):
     """docstring"""
-    # print(box.values)
-    # start = ds.index.searchsorted(date_time_range_slider.value[0])
-    # end = ds.index.searchsorted(date_time_range_slider.value[1])
-    # event_log.text = f"{str(wbx.value)} <br> {str(date_time_range_slider.value)}"
     select_output_format_mapping = {'NetCDF':'nc', 'CSV':'csv', 'Parquet':'pq'}
     with pn.param.set_values(main_app, loading=True):
         export_format = select_output_format_mapping[select_output_format.value]
         # export_format = select_output_format.value.lower()
-        if export_resampling.value == 'Raw':
+        if frequency_selector is not None and frequency_selector.visible and frequency_selector.value != 'Raw':
             resampler = False
             resampler_frequency = 'raw '
-            #print(export_resampling)
-            #print(export_resampling.value)
         else:
-            if frequency_selector is not None and frequency_selector.value != "--":
+            if frequency_selector is not None and frequency_selector.visible and frequency_selector.value != "--":
                 resampler = True
                 resampler_frequency = frequency_selector.value
-                #print(export_resampling)
-                #print(export_resampling.value)
             else:
                 resampler = False
                 resampler_frequency = 'raw'
-        if not frequency_selector:
+        if not frequency_selector or not frequency_selector.visible or frequency_selector.value == "--":
             time_range = []
         else:
-            time_range = date_time_range_slider.value
-            selected_variables = [i.name for i in wbx if i.value == True]
+            # time_range = date_time_range_slider.value
+            time_range = [str(i) for i in date_time_range_slider.value]
+        selected_variables = [i.name for i in wbx if i.value == True]
         # event_log.text = f"{str(selected_variables)} <br> {time_range} <br> {export_format} <br> {resampler}"
         
-
         data = {
             "url": "https://thredds.met.no/thredds/dodsC/alertness/YOPP_supersite/obs/utqiagvik/utqiagvik_obs_timeSeriesProfileSonde_20180201_20180331.nc",
             "variables": [
@@ -492,12 +362,7 @@ def export_selection(event):
             "resampling_frequency": "raw",
             "output_format": "nc"
             }
-        # download_link = get_download_link(data)
-        
-        # print(download_link)
-        
-        
-        time_range = [str(i) for i in date_time_range_slider.value]
+
         export_dataspec = {
             "url": str(url),
             "variables": selected_variables,
@@ -518,12 +383,8 @@ def export_selection(event):
             functools.partial(
                 compress_selection, download_link=download_link, output_log_widget=event_log))
         
-        # print(json.dump(export_dataspec))
-        #print(export_dataspec)
-        #json_object = json.dumps(export_dataspec, indent = 4)
-        #print(json_object)
-        # slice the ds by selecting the variables fro the checkbox and slicing along the time dimension from the timerange slider (if available)
-    
+
+
 def compress_selection(download_link, output_log_widget):
     time.sleep(2)
     output_log_widget.text = str(
@@ -532,90 +393,7 @@ def compress_selection(download_link, output_log_widget):
     print(download_link)
     
     
-def build_metadata_widget():
-    # dataset_metadata_keys = list(ds.attrs.keys())
-    # dataset_metadata_values = list(ds.attrs.values())
-    # dataset_metadata = dict(
-    #     key=dataset_metadata_keys,
-    #     value=dataset_metadata_values,
-    # )
-    # dataset_metadata_source = ColumnDataSource(dataset_metadata)
 
-    # dataset_metadata_columns = [
-    #     TableColumn(field="key", title="key"),
-    #     TableColumn(field="value", title="value"),
-    # ]
-    # metadata_table = DataTable(
-    #     source=dataset_metadata_source,
-    #     columns=dataset_metadata_columns,
-    # )
-    metadata_text = dict_to_html_ul(ds.attrs)
-    # metadata_layout = row(
-    #     Spacer(width=30),
-    #     column(
-    #         Div(text=f'<font size = "2" color = "darkslategray" ><b>Metadata<b></font> {metadata_text}'),
-    #         Spacer(height=10),
-    #         #metadata_table,
-    #         sizing_mode="stretch_both",
-    #     ),
-    # )
-    # metadata_layout = Div(text=f'<font size = "2" color = "darkslategray" ><b>Metadata<b></font> {metadata_text}')
-    
-    
-    
-    metadata_layout = pn.Row(Spacer(width=10), pn.Column(Spacer(height=120),
-                                                Div(text=f'<font size = "2" color = "darkslategray" ><b>Metadata<b></font> {metadata_text}'), 
-                                                width=400, sizing_mode='fixed'))
-    
-    
-    metadata_layout.visible = False
-
-    metadata_button = Button(
-        label="Metadata",
-        height=30,
-        width=120,
-    )  # , width_policy='fixed'
-    metadata_button.on_click(show_hide_metadata_widget)
-    return metadata_layout, metadata_button
-    
-    
-def build_download_widget():
-    export_resampling_option = pn.widgets.RadioButtonGroup(name='Resamplig', 
-                                              options=['Raw', 'Resampled'])    
-    event_log = Div(text=f"""<br><br> <br><br>""")
-    try:
-        time_dim = var_coord[0]
-        date_time_range_slider = pn.widgets.DatetimeRangeSlider(
-            name='Date Range',
-            start=ds.coords[time_dim].values.min(), end=ds.coords[time_dim].values.max(),
-            value=(ds.coords[time_dim].values.min(), ds.coords[time_dim].values.max())        )
-    except:
-        date_time_range_slider = Div(text=f"""<br><br> Time Dimension not available """)
-    
-    checkbox_group = pn.FlexBox(*[pn.widgets.Checkbox(name=str(i)) for i in mapping_var_names.keys()])
-    select_output_format = pn.widgets.Select(name='Export Format', options=['NetCDF', 'CSV', 'Parquet'])
-    
-    select_output_format_mapping = {'NetCDF':'nc', 'CSV':'csv', 'Parquet':'pq'}
-    
-    export_button = Button(
-        label="Export",
-        height=30,
-        width=120,
-    )  
-    export_button.on_click(show_hide_export_widget)
-    
-    
-    export_options_button = Button(
-        label="Download",
-        height=30,
-        width_policy='fit'
-        # width=30,
-    )  # , width_policy='fixed'
-    export_options_button.on_click(export_selection)
-    if not frequency_selector: 
-        export_resampling_option.visible = False
-    
-    return export_button, checkbox_group, date_time_range_slider, export_options_button, event_log, select_output_format, export_resampling_option
 
 
 pn.state.onload(callback=on_server_loaded)
@@ -624,94 +402,66 @@ pn.state.on_session_destroyed(callback=on_session_destroyed)
 
 templates = Jinja2Templates(directory="/app/templates")
 
-
-# url_form_html = """
-#     <div style="max-width: 800px; margin: 40px auto; padding: 20px; background-color: white; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.1);">
-#         <h2 style="color: #003366; margin-bottom: 20px;">Time Series Profile Tool</h2>
-#         <p style="color: #666; margin-bottom: 20px;">Please provide a URL to visualize the data:</p>
-#         <form id="url_form" onsubmit="return submitUrl(event);">
-#             <input type="text" id="url_input" 
-#                    style="width: 100%; padding: 10px; margin-bottom: 10px; border: 1px solid #ccc; border-radius: 4px;" 
-#                    placeholder="Enter data URL..." required>
-#             <div id="url_error" style="color: red; margin-bottom: 10px; display: none;"></div>
-#             <button type="submit" 
-#                     style="background-color: #003366; color: white; padding: 10px 20px; border: none; border-radius: 4px; cursor: pointer;">
-#                 Load Data
-#             </button>
-#         </form>
-#         <div style="margin-top: 20px; font-size: 14px; color: #666;">
-#             <p>Example URL: https://thredds.met.no/thredds/dodsC/arcticdata/...</p>
-#         </div>
-#     </div>
-#     <script>
-#         function submitUrl(event) {
-#             event.preventDefault();
-#             const input = document.getElementById('url_input');
-#             const error = document.getElementById('url_error');
-            
-#             if (!input) {
-#                 console.error('URL input element not found');
-#                 return false;
-#             }
-            
-#             const url = input.value.trim();
-#             if (!url) {
-#                 error.textContent = 'Please enter a URL';
-#                 error.style.display = 'block';
-#                 return false;
-#             }
-            
-#             try {
-#                 const redirectUrl = 'https://ncmet.wps.met.no/tspt?url=' + encodeURIComponent(url);
-#                 window.location.href = redirectUrl;
-#             } catch (e) {
-#                 error.textContent = 'Error processing URL: ' + e.message;
-#                 error.style.display = 'block';
-#                 return false;
-#             }
-#         }
-#     </script>
-#     """
-
-
-
-
-
 if 'url' not in pn.state.session_args:
-    # url = "https://thredds.met.no/thredds/dodsC/arcticdata/frost2netcdf-fixed/SN99910/2020/SN99910_2020-12-01_2020-12-31_time_resolution_PT1H.nc"
-    #error_log = Div(text=f"""<br><b>URL parameter not provided</b><br>""")
-    #error_log = Div(text=er)
-    #bokeh_pane = pn.pane.Bokeh(
-    #        column(error_log),
-    #    ).servable()
-    #bokeh_pane
-    #url = []
     javascript = Javascript()
+    # add a list of example urls below the input box
+    Resources = {
+        "Time Series 1": "https://thredds.met.no/thredds/dodsC/arcticdata/infranor/UiO-Kongsvegen-AWS/UiO-Kongsvegen-AWS-sw200-agg.ncml",
+        "Time Series 2": "https://thredds.met.no/thredds/dodsC/arcticdata/obsSynop/01008",
+        "Profile 1": "https://opendap1.nodc.no/thredds/dodsC/chemistry/StationM/StationM_2008_2019_v2.nc",
+        "Profile 2": "https://opendap1.nodc.no/thredds/dodsC/chemistry/StationM/StationM_2008_2019_v1.nc",
+        "Time Series Profile 1": "https://thredds.met.no/thredds/dodsC/arcticdata/frost2netcdf-permafrost/SN99868/SN99868-aggregated.ncml",
+        "Time Series Profile 2": "https://thredds.met.no/thredds/dodsC/arcticdata/met.no/obs-temp/obs-temp_20892.nc",
+        "Trajectory 1": "https://thredds.met.no/thredds/dodsC/arcticdata/arctic-passion/UiT-drifters/AWS-ITO/aws_2022.nc",
+        "Trajectory 2": "https://thredds.met.no/thredds/dodsC/arcticdata/arctic-passion/UiT-drifters/SIMBA/simba-510_air-temperature2022.nc",
+    }
+    
+    # add the resources to a table widget
+    # AttributeError: 'dict' object has no attribute 'index'
+    resources_df = pd.DataFrame.from_dict(Resources, orient='index', columns=['URL'])
+    resources_table = pn.widgets.DataFrame(
+        resources_df,
+        name="Example URLs",
+        # width=600,
+        # height=200
+    )
+    # add a button to add selected row url to the input box
+    add_button = pn.widgets.Button(name="Add URL", button_type="primary")
+    # method to add the selected row url to the input box
+    def add_url(event):
+        selected = resources_table.selection
+        if selected:
+            url_input.value = resources_df.iloc[selected[0]]['URL']
+
+    add_button.on_click(add_url)
+
     # add a line editing widget for the url input
     url_input = pn.widgets.TextInput(
         name="Data URL",
         placeholder="Enter data URL...",
         width=600
     )
-
+    
+        
     url_button = pn.widgets.Button(name="Load Data", button_type="primary")
-    
 
-    
-    # menu_items = [
-    #     ("Twitter", "https://twitter.com/Panel_org"),
-    #     ("LinkedIn", "https://www.linkedin.com/company/panel-org/"),
-    #     ("Discourse", "https://discourse.holoviz.org/"),
-    # ]
-    # menu_button = pn.widgets.MenuButton(
-    #     name="Dropdown", items=menu_items, button_type="primary"
-    # )
 
     # connect the load Data button to append a new entry into the javascript widget
     @pn.depends(url_button.param.clicks, watch=True)
     def load_data_button(clicks):
         url = url_input.value
-        code = f"window.location.href='/tspt?url={url}'"
+        ds, decoded_time, error_log, monotonic, featureType = load_data(url)
+        # featureType = get_featuretype(url)
+        feature_type_mapping = {
+            "timeseries": "TSP",
+            "trajectory": "trj",
+            "profile": "TSP",
+        }
+        
+        print("------------------------- LOADING ++++++++++++++++++++++++++++++++++++")
+        print("FeatureType detected:", featureType)
+
+        code = f"window.location.href='/{feature_type_mapping.get(featureType, 'TSP')}?url={url}'"
         javascript.eval(code)
     
     
@@ -725,14 +475,19 @@ if 'url' not in pn.state.session_args:
         javascript,
         url_input,
         url_button,
+        resources_table,
+        add_button, sizing_mode='stretch_height',
     ).servable()
 else:
     url = pn.state.session_args.get('url')[0].decode("utf8")
 
     valid_url = validate_url(url)
 
+    # check if the url points to a valid dataset
+    valid_url = validate_opendap(url)
+
     if not valid_url:
-        error_log = Div(text=f"""<br><b>Invalid URL:</b><br>   {url} """)
+        error_log = Div(text=f"""<br><b>Invalid URL:</b><br>   {url}  <br><br> Please provide a valid OPeNDAP URL.""")
         bokeh_pane = pn.pane.Bokeh(
                 column(error_log),
             ).servable()
@@ -740,7 +495,7 @@ else:
         print("++++++++++++++++++++++++ LOADING ++++++++++++++++++++++++++++++++++++")
         print(str(url))
         print("++++++++++++++++++++++++ +++++++ ++++++++++++++++++++++++++++++++++++")
-        ds, decoded_time, error_log = load_data(url)
+        ds, decoded_time, error_log, monotonic, featureType = load_data(url)
         if not ds:
             raw_data = Div(text=f"""<b>ValueError</b><br><br> Can't load dataset from {url} """)
             newhtml = templates.get_template("error.html").render(
@@ -754,26 +509,27 @@ else:
                 height=50,
                 width=50,
             )  # , width_policy='fixed'
-            error_log_button.on_click(show_hide_error)
+            # error_log_button.on_click(show_hide_error)
+            error_log_button.on_click(functools.partial(show_hide_widget, widget=error_log))
 
             print(newhtml)
             bokeh_pane = pn.pane.Bokeh(
                 column(raw_data, error_log_button, error_log),
             ).servable()
             
-    if ds:
-        if 'featureType' in ds.attrs:
-            featureType = ds.attrs['featureType'].lower()
-        elif 'cdm_data_type' in ds[var].attrs:
-            featureType = ds[var].attrs['cdm_data_type'].lower()
-        else:
-            featureType = None
-        if featureType == 'timeseries':
-            var_coord = [i for i in ds.coords if ds.coords.dtypes[i] == np.dtype('<M8[ns]')]
-            time_coord = True
-        else:
-            time_coord = False
-            var_coord = list(ds.coords)
+    # if ds:
+    #     # if 'featureType' in ds.attrs:
+    #     #     featureType = ds.attrs['featureType'].lower()
+    #     # elif 'cdm_data_type' in ds[var].attrs:
+    #     #     featureType = ds[var].attrs['cdm_data_type'].lower()
+    #     # else:
+    #     #     featureType = None
+    #     if featureType == 'timeseries':
+    #         var_coord = [i for i in ds.coords if ds.coords.dtypes[i] == np.dtype('<M8[ns]')]
+    #         time_coord = True
+    #     else:
+    #         time_coord = False
+    #         var_coord = list(ds.coords)
             
 
 
@@ -793,20 +549,10 @@ else:
         
         
     if ds:
-        # if ds.attrs['featureType'] == 'timeSeries':
-        #     var_coord = [i for i in ds.coords if ds.coords.dtypes[i] == np.dtype('<M8[ns]')]
-        #     time_coord = True
-        # else:
-        #     time_coord = False
-        #     var_coord = list(ds.coords)
-
+        # find plottable variables
         plottable_vars = [j for j in ds if len([value for value in list(ds[j].coords) if value in list(ds.dims)]) >= 1]
-
         # plottable_vars = [i for i in plottable_vars if len(ds[i].dims) == len(ds.indexes)]
-
         plottable_vars = [i for i in plottable_vars if safe_check(i)]
-
-
         # build a dictionary of variables and their long names
         print("plottable_vars:", plottable_vars )
         mapping_var_names = {}
@@ -833,22 +579,17 @@ else:
         else:
             quadmesh_checkbox = None
         
-
-
-
-        
-
-        
-        
     if ds:
         # Export Widgets
-        export_button, wbx, date_time_range_slider, export_options_button, event_log, select_output_format, export_resampling = build_download_widget()
-        # export_options_button
+        export_button, wbx, date_time_range_slider, export_options_button, event_log, select_output_format, export_resampling = build_download_widget(ds, mapping_var_names, frequency_selector)
         export_options_button.on_click(export_selection)
+        
+
         download_header = Div(text='<font size = "2" color = "darkslategray" ><b>Data Export<b></font> <br> Variable Selection')
         # download_header.visible = False
         # Metadata Widgets
-        metadata_layout, metadata_button = build_metadata_widget()
+        metadata_layout, metadata_button = build_metadata_widget(ds.attrs)
+        metadata_button.on_click(functools.partial(show_hide_widget, widget=metadata_layout))
         # downloader = pn.Column(download_header, wbx, date_time_range_slider, select_output_format, export_resampling, export_options_button, event_log, width=400, sizing_mode='fixed')
         downloader = pn.Row(Spacer(width=10), pn.Column(Spacer(height=120),
                                                         download_header, 
@@ -858,32 +599,32 @@ else:
                                                         export_resampling, 
                                                         export_options_button, 
                                                         event_log, width=400, sizing_mode='fixed'))
-
+        export_button.on_click(functools.partial(show_hide_widget, widget=downloader))
         downloader.visible = False
 
         variables_selector.param.watch(on_var_select, parameter_names=['value'])
         dimension_group.param.watch(on_dimension_select, parameter_names=['value'])
         #if quadmesh_checkbox:
         #    quadmesh_checkbox.param.watch(on_quadmesh_select, parameter_names=['value'])
-        
-
         selected_var = [key for key, value in mapping_var_names.items() if value == variables_selector.value]
         dimension = dimension_group.value
 
         buttons = pn.Column(export_button, metadata_button)
-        plot_plot = plot(selected_var, ds, dimension, title=variables_selector.value)
+        plot_plot = plot(selected_var, ds, dimension, title=variables_selector.value, frequency=frequency_selector.value, monotonic=monotonic, featureType=featureType)
+        # print(dir(plot_plot))
         # quadmesh_plot = pn.Row(Div(text=f'<font size = "2" color = "darkslategray" >QUADMESHPLOT PLACEHOLDER</font>'))
         quadmesh_plot = pn.Row(sizing_mode='scale_both')
         quadmesh_plot.visible = False
-        plot_container = pn.Column(pn.Row(variables_selector, pn.Row(Div(text=f'<font size = "2" color = "darkslategray" >Dimension</font>'), dimension_group), frequency_selector, buttons), quadmesh_checkbox, quadmesh_plot, plot_plot, Spacer(height=10), sizing_mode='scale_both') # , sizing_mode='scale_both'
-
-        # main_app = pn.Row(plot_container, Spacer(width=10), downloader, metadata_layout).servable()
-
-
-        # jinja_template = env.get_template('template.html')
-        # tmpl = pn.Template(jinja_template)
-
-        # tmpl.add_variable('app_title', '<center><h1>NCMET</h1></center>')
+        plot_container = pn.Column(pn.Row(variables_selector, 
+                                          pn.Row(Div(text=f'<font size = "2" color = "darkslategray" >Dimension</font>'), 
+                                                 dimension_group), 
+                                          frequency_selector, 
+                                          buttons), 
+                                   quadmesh_checkbox, 
+                                   quadmesh_plot, 
+                                   plot_plot, 
+                                   Spacer(height=10), 
+                                   sizing_mode='scale_both') # , sizing_mode='scale_both'
 
         main_app = pn.Row(plot_container, 
                         Spacer(width=10), 
