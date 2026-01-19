@@ -3,6 +3,8 @@ services:
     image: epinux/ncmet:latest
     build:
       context: ./docker
+    ports:
+      - "7000:7000"
     environment:
       # BOKEH_ALLOW_WS_ORIGIN: '*'
       PORT: '7000'
@@ -15,13 +17,13 @@ services:
       PYTHONPATH: '$${PYTHONPATH}:/app:/seaice:/seaicemod'
       SEAICE_APP_ROOT: '/seaice'
       SEAICEMOD_APP_ROOT: '/seaicemod'
-    hostname: ncmet
-    networks:
-      - net
+    # hostname: ncmet
+    # networks:
+    #   - net
     volumes:
-      - ./metviz/seaicemod:/seaicemod
+      # - ./metviz/seaicemod:/seaicemod
       - ./metviz/trj:/trj
-      - ./metviz/seaice:/seaice
+      # - ./metviz/seaice:/seaice
       - ./metviz/trajectory:/trajectory
       - ./metviz/mapdap:/mapdap
       - ./metviz/tspt:/tspt
@@ -32,8 +34,8 @@ services:
     entrypoint: ["/entrypoint.sh"]
 
 
-networks:
-  net:
-    driver: overlay
-    attachable: true
+# networks:
+#   net:
+#     driver: overlay
+#     attachable: true
 
