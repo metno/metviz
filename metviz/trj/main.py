@@ -92,7 +92,9 @@ def _open_dataset(url: str) -> xr.Dataset:
 
 
 # Load an example dataset (small dataset chosen for faster interactivity).
-ds = _open_dataset(RESOURCES["a"])
+
+url = pn.state.session_args.get('url')[0].decode("utf8") if pn.state.session_args.get('url') else RESOURCES["a"]
+ds = _open_dataset(url)
 
 # Identify plottable variables: at least one dimension and the leading dim is present.
 plottable_vars = [
@@ -162,6 +164,7 @@ total_length_m = calculate_total_geodetic_length(locations)
 total_duration_s = compute_trajectory_duration(ds)
 duration_hours = total_duration_s / 3600.0
 duration_days = duration_hours / 24.0
+
 
 # print(f"Total trajectory length: {total_length_m/1000:.2f} km")
 # print(f"Total trajectory duration: {duration_hours:.2f} hours")
