@@ -40,7 +40,7 @@ import xarray as xr
 import panel as pn
 import numpy as np
 import holoviews as hv
-from utility import ModelURL, pandas_frequency_offsets, get_download_link, dict_to_html_ul, load_data, validate_url, build_metadata_widget
+from utility import ModelURL, pandas_frequency_offsets, get_download_link, dict_to_html_ul, load_data, validate_url, build_metadata_widget, build_download_widget
 from js_util import Javascript
 
 from pydantic import ValidationError
@@ -196,10 +196,15 @@ def plot(var, ds, dimension=None, title=None, frequency=None, monotonic=None, fe
     else:
         featureType = None
     #is_monotonic = False
+
     if featureType == 'timeseries':
-        #var_coord = [i for i in ds.coords if ds.coords.dtypes[i] == np.dtype('<M8[ns]')]
-        #coords_values = ds.coords[var_coord[0]].values[::-1]
-        #is_monotonic = all(coords_values[i] <= coords_values[i + 1] for i in range(len(coords_values) - 1)) or all(coords_values[i] >= coords_values[i + 1] for i in range(len(coords_values) - 1))
+        var_coord = [i for i in ds.coords if ds.coords.dtypes[i] == np.dtype('<M8[ns]')]
+        time_coord = True
+    else:
+        time_coord = False
+        var_coord = list(ds.coords)
+
+    if featureType == 'timeseries':
         if monotonic:
             frequency_selector.visible = True
         else:
@@ -498,46 +503,7 @@ def compress_selection(download_link, output_log_widget):
     print(download_link)
     
     
-    
-def build_download_widget():
 
-      
-    event_log = Div(text=f"""<br><br> <br><br>""")
-    try:
-        time_dim = var_coord[0]
-        date_time_range_slider = pn.widgets.DatetimeRangeSlider(
-            name='Date Range',
-            start=ds.coords[time_dim].values.min(), end=ds.coords[time_dim].values.max(),
-            value=(ds.coords[time_dim].values.min(), ds.coords[time_dim].values.max())        )
-        export_resampling_option = pn.widgets.RadioButtonGroup(name='Resamplig', 
-                                              options=['Raw', 'Resampled'])  
-    except:
-        date_time_range_slider = Div(text=f"""<br><br> Time Dimension not available """)
-        export_resampling_option = Div(text=f"""<br><br> Resampling disabled """)
-    checkbox_group = pn.FlexBox(*[pn.widgets.Checkbox(name=str(i)) for i in mapping_var_names.keys()])
-    select_output_format = pn.widgets.Select(name='Export Format', options=['NetCDF', 'CSV', 'Parquet'])
-    
-    select_output_format_mapping = {'NetCDF':'nc', 'CSV':'csv', 'Parquet':'pq'}
-    
-    export_button = Button(
-        label="Export",
-        height=30,
-        width=120,
-    )  
-    # export_button.on_click(show_hide_export_widget)
-    
-    
-    export_options_button = Button(
-        label="Download",
-        height=30,
-        width_policy='fit'
-        # width=30,
-    )  # , width_policy='fixed'
-    export_options_button.on_click(export_selection)
-    if not frequency_selector: 
-        export_resampling_option.visible = False
-    
-    return export_button, checkbox_group, date_time_range_slider, export_options_button, event_log, select_output_format, export_resampling_option
 
 
 pn.state.onload(callback=on_server_loaded)
@@ -657,19 +623,19 @@ else:
                 column(raw_data, error_log_button, error_log),
             ).servable()
             
-    if ds:
-        # if 'featureType' in ds.attrs:
-        #     featureType = ds.attrs['featureType'].lower()
-        # elif 'cdm_data_type' in ds[var].attrs:
-        #     featureType = ds[var].attrs['cdm_data_type'].lower()
-        # else:
-        #     featureType = None
-        if featureType == 'timeseries':
-            var_coord = [i for i in ds.coords if ds.coords.dtypes[i] == np.dtype('<M8[ns]')]
-            time_coord = True
-        else:
-            time_coord = False
-            var_coord = list(ds.coords)
+    # if ds:
+    #     # if 'featureType' in ds.attrs:
+    #     #     featureType = ds.attrs['featureType'].lower()
+    #     # elif 'cdm_data_type' in ds[var].attrs:
+    #     #     featureType = ds[var].attrs['cdm_data_type'].lower()
+    #     # else:
+    #     #     featureType = None
+    #     if featureType == 'timeseries':
+    #         var_coord = [i for i in ds.coords if ds.coords.dtypes[i] == np.dtype('<M8[ns]')]
+    #         time_coord = True
+    #     else:
+    #         time_coord = False
+    #         var_coord = list(ds.coords)
             
 
 
@@ -721,7 +687,8 @@ else:
         
     if ds:
         # Export Widgets
-        export_button, wbx, date_time_range_slider, export_options_button, event_log, select_output_format, export_resampling = build_download_widget()
+        export_button, wbx, date_time_range_slider, export_options_button, event_log, select_output_format, export_resampling = build_download_widget(ds, mapping_var_names, frequency_selector)
+        export_options_button.on_click(export_selection)
         
         # export_options_button
         # export_options_button.on_click(export_selection)

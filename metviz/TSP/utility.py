@@ -251,6 +251,53 @@ def load_data(url):
     return ds, decoded_time, error_log, monotonic, featureType
 
 
+    
+def build_download_widget(ds, mapping_var_names, frequency_selector=True):
+    """docstring"""  
+    event_log = Div(text=f"""<br><br> <br><br>""")
+    try:
+        var_coord = [i for i in ds.coords if ds.coords.dtypes[i] == np.dtype('<M8[ns]')]
+        time_coord = True
+    except:
+        time_coord = False
+        var_coord = list(ds.coords)
+    try:
+        time_dim = var_coord[0]
+        date_time_range_slider = pn.widgets.DatetimeRangeSlider(
+            name='Date Range',
+            start=ds.coords[time_dim].values.min(), end=ds.coords[time_dim].values.max(),
+            value=(ds.coords[time_dim].values.min(), ds.coords[time_dim].values.max())        )
+        export_resampling_option = pn.widgets.RadioButtonGroup(name='Resamplig', 
+                                              options=['Raw', 'Resampled'])  
+    except:
+        date_time_range_slider = Div(text=f"""<br><br> Time Dimension not available """)
+        export_resampling_option = Div(text=f"""<br><br> Resampling disabled """)
+    checkbox_group = pn.FlexBox(*[pn.widgets.Checkbox(name=str(i)) for i in mapping_var_names.keys()])
+    select_output_format = pn.widgets.Select(name='Export Format', options=['NetCDF', 'CSV', 'Parquet'])
+    
+    select_output_format_mapping = {'NetCDF':'nc', 'CSV':'csv', 'Parquet':'pq'}
+    
+    export_button = Button(
+        label="Export",
+        height=30,
+        width=120,
+    )  
+    # export_button.on_click(show_hide_export_widget)
+    
+    
+    export_options_button = Button(
+        label="Download",
+        height=30,
+        width_policy='fit'
+        # width=30,
+    )  # , width_policy='fixed'
+    # export_options_button.on_click(export_selection)
+    if not frequency_selector: 
+        export_resampling_option.visible = False
+    
+    return export_button, checkbox_group, date_time_range_slider, export_options_button, event_log, select_output_format, export_resampling_option
+
+
 def build_metadata_widget(attrs):
     metadata_text = dict_to_html_ul(attrs)
     metadata_layout = pn.Row(Spacer(width=10), pn.Column(Spacer(height=120),
