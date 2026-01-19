@@ -11,8 +11,8 @@ import holoviews as hv
 import panel as pn
 import xarray as xr
 from ipywidgets import HTML
-from ipyleaflet import Map, Marker, Polyline, WMSLayer, Popup
-from bokeh.models import HoverTool, CustomJSHover, Div, Button
+from ipyleaflet import Map, Marker, Polyline, WMSLayer
+from bokeh.models import HoverTool, Div, Button
 import numpy as np
 from geographiclib.geodesic import Geodesic
 
