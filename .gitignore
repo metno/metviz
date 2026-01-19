@@ -22,3 +22,4 @@ logs/
 .DS_Store
 Thumbs.db   
 metviz.code-workspace
+scratch/
