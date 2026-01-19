@@ -11,10 +11,12 @@ import holoviews as hv
 import panel as pn
 import xarray as xr
 from ipywidgets import HTML
-from ipyleaflet import Map, Marker, Polyline, WMSLayer, Popup
-from bokeh.models import HoverTool, CustomJSHover
+from ipyleaflet import Map, Marker, Polyline, WMSLayer
+from bokeh.models import HoverTool, Div, Button
 import numpy as np
 from geographiclib.geodesic import Geodesic
+
+from utility import dict_to_html_ul
 
 
 pn.extension("ipywidgets", sizing_mode="stretch_width")
@@ -31,7 +33,7 @@ RESOURCES = {
 # code starts growing, probably better to add an utils.py file
 
 
-def compute_trajectory_duration(ds, time_dim='time'):
+def compute_trajectory_duration(ds, time_dim="time"):
     """
     Computes the total duration of a trajectory in an xarray Dataset.
 
@@ -45,12 +47,11 @@ def compute_trajectory_duration(ds, time_dim='time'):
 
     start_time = np.datetime64(time_values[0])
     end_time = np.datetime64(time_values[-1])
-    duration = (end_time - start_time) / np.timedelta64(1, 's')  # Duration in seconds
+    duration = (end_time - start_time) / np.timedelta64(
+        1, "s"
+    )  # Duration in seconds
     return duration
 
-
-
-        
 
 def calculate_total_geodetic_length(points):
     """
@@ -68,18 +69,17 @@ def calculate_total_geodetic_length(points):
     # Iterate through the points from the second point to the end
     # comparing each point with the previous one
     for i in range(1, len(points)):
-        lat1, lon1 = points[i-1]
+        lat1, lon1 = points[i - 1]
         lat2, lon2 = points[i]
 
         # Perform the inverse calculation for the current segment
         g = geod.Inverse(lat1, lon1, lat2, lon2)
 
         # 's12' is the distance in meters for that segment
-        segment_distance = g['s12']
+        segment_distance = g["s12"]
         total_distance += segment_distance
 
     return total_distance
-
 
 
 @pn.cache
@@ -93,7 +93,11 @@ def _open_dataset(url: str) -> xr.Dataset:
 
 # Load an example dataset (small dataset chosen for faster interactivity).
 
-url = pn.state.session_args.get('url')[0].decode("utf8") if pn.state.session_args.get('url') else RESOURCES["a"]
+url = (
+    pn.state.session_args.get("url")[0].decode("utf8")
+    if pn.state.session_args.get("url")
+    else RESOURCES["a"]
+)
 ds = _open_dataset(url)
 
 # Identify plottable variables: at least one dimension and the leading dim is present.
@@ -111,7 +115,10 @@ if not plottable_vars:
 # Widgets
 width = np.max([len(i) for i in plottable_vars]) * 10
 var_select = pn.widgets.Select(
-    name="Data Variable", options=plottable_vars, value=plottable_vars[0], width=width
+    name="Data Variable",
+    options=plottable_vars,
+    value=plottable_vars[0],
+    width=width,
 )
 
 datetime_slider = pn.widgets.DatetimeSlider(
@@ -129,6 +136,14 @@ index_value = pn.widgets.TextInput(name="Location", value="index", width=200)
 throttle_checkbox = pn.widgets.Checkbox(
     name="on-release", value=False, width=100
 )
+
+# Create the metadata HTML element together with the button used to show/hide it.
+metadata = dict_to_html_ul(ds.attrs)
+metadata_layout = Div(
+    text=f'<font size = "2" color = "darkslategray" ><b>Metadata<b></font> {metadata}',
+    width=500,
+)
+metadata_button = Button(label="Metadata")
 
 
 # Custom CRS for the northern polar stereographic projection used by the WMS.
@@ -156,7 +171,10 @@ gebco_polar_stereo_north_wms = WMSLayer(
 
 
 # Build a simple line connecting all lat/lon points in the dataset for context.
-locations = [[float(lat), float(lon)] for lat, lon in zip(ds.latitude.values, ds.longitude.values)]
+locations = [
+    [float(lat), float(lon)]
+    for lat, lon in zip(ds.latitude.values, ds.longitude.values)
+]
 line = Polyline(locations=locations, color="green", fill=False)
 
 # print out total length of the trajectory
@@ -169,18 +187,22 @@ duration_days = duration_hours / 24.0
 # print(f"Total trajectory length: {total_length_m/1000:.2f} km")
 # print(f"Total trajectory duration: {duration_hours:.2f} hours")
 
-line_popup_content = HTML(f"""<b>Total trajectory length:</b> <br>{total_length_m/1000:.2f} km<br><b>Total trajectory duration:</b> <br>{duration_hours:.2f} hours ({duration_days:.2f} days).""")
+line_popup_content = HTML(
+    f"""<b>Total trajectory length:</b> <br>{total_length_m / 1000:.2f} km<br><b>Total trajectory duration:</b> <br>{duration_hours:.2f} hours ({duration_days:.2f} days)."""
+)
 line.popup = line_popup_content
 
 # Create the map and add the trajectory line. Center on the mean location.
 m = Map(
-    center=(float(ds.latitude.mean().values), float(ds.longitude.mean().values)),
+    center=(
+        float(ds.latitude.mean().values),
+        float(ds.longitude.mean().values),
+    ),
     zoom=0,
     crs=gebco_polar_stereo_north_crs,
     basemap=gebco_polar_stereo_north_wms,
 )
 m.add(line)
-
 
 
 # Attach a private attribute to hold the active marker, avoiding globals.
@@ -194,7 +216,7 @@ def index_to_datetime(idx: int) -> pn.widgets.DatetimeSlider:
         return ds.indexes["time"][idx]
     except Exception:
         return ds.indexes["time"][0]
-    
+
 
 def makeplot(variable: str, idx) -> hv.Overlay:
     """Build the Holoviews plot for `variable` at datetime `idx` and update the map.
@@ -213,8 +235,14 @@ def makeplot(variable: str, idx) -> hv.Overlay:
     # X axis: time coordinate
     try:
         time_da = ds["time"]
-        time_long = time_da.attrs.get("long_name") if hasattr(time_da, "attrs") else None
-        time_units = time_da.attrs.get("units") if hasattr(time_da, "attrs") else None
+        time_long = (
+            time_da.attrs.get("long_name")
+            if hasattr(time_da, "attrs")
+            else None
+        )
+        time_units = (
+            time_da.attrs.get("units") if hasattr(time_da, "attrs") else None
+        )
     except Exception:
         time_long = None
         time_units = None
@@ -231,34 +259,21 @@ def makeplot(variable: str, idx) -> hv.Overlay:
     if y_units:
         ylabel = f"{ylabel} ({y_units})"
 
-    # Build hover tooltips including the actual variable value ($y).
-    # We include the variable's display name and units when available.
-    y_name = y_long or variable
-    y_unit_text = f" {y_units}" if y_units else ""
-
-    TOOLTIPS = f"""
-    <div>
-      <div><strong>Time</strong></div>
-      <div><span style='font-size:12px'>$x{{%F}}</span></div>
-      <div><strong>{y_name}</strong></div>
-      <div><span style='font-size:12px'>$y{y_unit_text}</span></div>
-    </div>
-    """
-
     hover = HoverTool(
         tooltips=[
-            ( 'time',   '@time{%F}'            ),
-            ( variable,  f'@{{{variable}}}{{%0.2f}}' ), # use @{ } for field names with spaces
+            ("time", "@time{%F}"),
+            (
+                variable,
+                f"@{{{variable}}}{{%0.2f}}",
+            ),  # use @{ } for field names with spaces
         ],
-
         formatters={
-            '@time'        : 'datetime', # use 'datetime' formatter for '@date' field
-            f'@{{{variable}}}' : 'printf',   # use 'printf' formatter for '@{adj close}' field
-                                        # use default 'numeral' formatter for other fields
+            "@time": "datetime",  # use 'datetime' formatter for '@date' field
+            f"@{{{variable}}}": "printf",  # use 'printf' formatter for '@{adj close}' field
+            # use default 'numeral' formatter for other fields
         },
-
         # display a tooltip whenever the cursor is vertically in line with a glyph
-        mode='vline',
+        mode="vline",
     )
 
     # Curve for the selected variable. Enable a grid for easier reading
@@ -294,12 +309,14 @@ def makeplot(variable: str, idx) -> hv.Overlay:
             # ignore removal errors; we'll replace marker below
             pass
 
-    timestep = ds.time[pos].dt.strftime('%Y-%m-%dT%H:%M:%S').values
+    timestep = ds.time[pos].dt.strftime("%Y-%m-%dT%H:%M:%S").values
     value = float(ds[variable].isel(time=pos).values)
     marker_message = HTML()
-    marker_message.value = (f'<p><b>Time</b>: {timestep}<br />'
-                            f'<b>Location</b>: {center_lat}, {center_lon}<br />'
-                            f'<b>{ylabel}</b>: {value}</p>')
+    marker_message.value = (
+        f"<p><b>Time</b>: {timestep}<br />"
+        f"<b>Location</b>: {center_lat}, {center_lon}<br />"
+        f"<b>{ylabel}</b>: {value}</p>"
+    )
     try:
         marker = Marker(location=center, draggable=False)
         m.add(marker)
@@ -313,6 +330,7 @@ def makeplot(variable: str, idx) -> hv.Overlay:
     # Return the combined Holoviews object
     return fig * vline
 
+
 # Bind the function to the widgets and create a dynamic map.
 # Helper bound function that selects the slider value source depending on
 # the checkbox. It returns `datetime_slider.value_throttled` when the
@@ -325,17 +343,45 @@ get_idx = pn.bind(
     datetime_slider.param.value,
 )
 
+
+def metadata_handler(new):
+    if metadata_layout.visible:
+        metadata_layout.visible = False
+    else:
+        metadata_layout.visible = True
+
+
+# Is called when the page has finished loading to hide the metadata (used as a workaround to get a proper layout).
+def on_load():
+    metadata_layout.visible = False
+
+
 # Now bind `makeplot` to the variable selector and the resolved index value.
 bound_function = pn.bind(makeplot, variable=var_select, idx=get_idx)
 dmap = hv.DynamicMap(bound_function)
 
+# Handle metadata callbacks (both the button that shows/hides the metadata, and the panel callback that hides the
+# metadata once the page has loaded. The latter is a workaround to get a proper layout where the metadata only takes
+# up the set amount of width it is supposed to take up.
+metadata_button.on_event("button_click", metadata_handler)
+pn.state.onload(on_load)
+
 
 # Compose the layout: widgets on top, then the plot and map together
 layout = pn.Column(
-    pn.Row(var_select, datetime_slider, throttle_checkbox, index_value),
-    pn.Column(dmap, m, sizing_mode="scale_both"),
+    pn.Row(
+        var_select,
+        datetime_slider,
+        throttle_checkbox,
+        index_value,
+        metadata_button,
+    ),
+    pn.Row(
+        pn.Column(dmap, m, sizing_mode="scale_both"),
+        metadata_layout,
+        sizing_mode="scale_both",
+    ),
 )
-
 
 # Make the layout servable in a Panel server or notebook
 layout.servable()
