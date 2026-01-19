@@ -50,29 +50,17 @@ from bokeh.models import Button, Div
 from bokeh.layouts import column, Spacer
 import pandas as pd
 # from bokeh.models.formatters import DatetimeTickFormatter
-
-
 from jinja2 import Environment, FileSystemLoader
 import gc
 import param
 
 # pn.extension(sizing_mode="scale_both", loading_indicator=True)
 
-
 env = Environment(loader=FileSystemLoader('/assets'))
 pn.param.ParamMethod.loading_indicator = True
 
 ds = None
 
-    
-
-def show_hide_error(event):
-    """docstring"""
-    if error_log.visible:
-        error_log.visible = False
-    else:
-        error_log.visible = True
-    
 
 def plot_quadmesh(variable_name, dataset, title=None):
     print(f"""plotting quadmesh for var: {variable_name}, 
