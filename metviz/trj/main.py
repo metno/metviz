@@ -238,20 +238,6 @@ def makeplot(variable: str, idx) -> hv.Overlay:
     if y_units:
         ylabel = f"{ylabel} ({y_units})"
 
-    # Build hover tooltips including the actual variable value ($y).
-    # We include the variable's display name and units when available.
-    y_name = y_long or variable
-    y_unit_text = f" {y_units}" if y_units else ""
-
-    TOOLTIPS = f"""
-    <div>
-      <div><strong>Time</strong></div>
-      <div><span style='font-size:12px'>$x{{%F}}</span></div>
-      <div><strong>{y_name}</strong></div>
-      <div><span style='font-size:12px'>$y{y_unit_text}</span></div>
-    </div>
-    """
-
     hover = HoverTool(
         tooltips=[
             ( 'time',   '@time{%F}'            ),
