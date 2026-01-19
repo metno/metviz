@@ -40,7 +40,7 @@ import xarray as xr
 import panel as pn
 import numpy as np
 import holoviews as hv
-from utility import ModelURL, pandas_frequency_offsets, get_download_link, dict_to_html_ul, load_data, validate_url, build_metadata_widget, build_download_widget, show_hide_widget
+from utility import ModelURL, pandas_frequency_offsets, get_download_link, dict_to_html_ul, load_data, validate_url, build_metadata_widget, build_download_widget, show_hide_widget, on_server_loaded, on_session_created, on_session_destroyed
 from js_util import Javascript
 
 from pydantic import ValidationError
@@ -66,35 +66,35 @@ pn.param.ParamMethod.loading_indicator = True
 ds = None
 
 
-def on_server_loaded():
-    print("server loaded")
-    print("")
-    sys.stdout.flush()
+# def on_server_loaded():
+#     print("server loaded")
+#     print("")
+#     sys.stdout.flush()
     
 
-def on_session_created(session_context):
-    print("session created")
-    print("")
-    sys.stdout.flush()
+# def on_session_created(session_context):
+#     print("session created")
+#     print("")
+#     sys.stdout.flush()
 
 
-def on_session_destroyed(session_context):
-    print("session destroyed")
-    print("")
-    print(dir(session_context))
-    try:
-        del ds
-        gc.collect()
-    except UnboundLocalError:
-        pass
-    try:
-        del plot_widget
-        gc.collect()
-    except UnboundLocalError:
-        pass
-    plot_widget = None
-    gc.collect()
-    sys.stdout.flush()
+# def on_session_destroyed(session_context):
+#     print("session destroyed")
+#     print("")
+#     print(dir(session_context))
+#     try:
+#         del ds
+#         gc.collect()
+#     except UnboundLocalError:
+#         pass
+#     try:
+#         del plot_widget
+#         gc.collect()
+#     except UnboundLocalError:
+#         pass
+#     plot_widget = None
+#     gc.collect()
+#     sys.stdout.flush()
     
 
 

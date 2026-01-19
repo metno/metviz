@@ -49,6 +49,39 @@ import numpy as np
 import gc
 from bokeh.models import Button, Div
 from bokeh.layouts import column, Spacer
+import sys
+import gc
+
+def on_server_loaded():
+    print("server loaded")
+    print("")
+    sys.stdout.flush()
+    
+
+def on_session_created(session_context):
+    print("session created")
+    print("")
+    sys.stdout.flush()
+
+
+def on_session_destroyed(session_context):
+    print("session destroyed")
+    print("")
+    print(dir(session_context))
+    try:
+        del ds
+        gc.collect()
+    except UnboundLocalError:
+        pass
+    try:
+        del plot_widget
+        gc.collect()
+    except UnboundLocalError:
+        pass
+    plot_widget = None
+    gc.collect()
+    sys.stdout.flush()
+
 
 class ModelURL(BaseModel):
     """_summary_
