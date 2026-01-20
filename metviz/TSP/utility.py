@@ -319,26 +319,6 @@ def show_hide_widget(event=None, widget=None):
         except Exception:
             print("first exception in show_hide_widget")
             target = None
-    # if target is None:
-    #     # final fallback to the global downloader
-    #     target = downloader
-
-    # try:
-    #     result = [key for key, value in mapping_var_names.items() if value == variables_selector.value]
-    # except Exception:
-    #     print("second exception in show_hide_widget")
-    #     result = None
-
-    # hide export resampling option if the dataset does not have a time coord
-    # try:
-    #     time_dim = [i for i in ds.coords if ds.coords.dtypes[i] == np.dtype('<M8[ns]')][0]
-    #     if result and time_dim not in ds[result].indexes:
-    #         export_resampling.visible = False
-    # except Exception:
-    #     print("third exception in show_hide_widget")
-    #     # if anything goes wrong, silently skip adjusting resampling visibility
-    #     pass
-
     try:
         if target.visible:
             target.visible = False
@@ -347,6 +327,7 @@ def show_hide_widget(event=None, widget=None):
             # metadata_button.on_click(functools.partial(show_hide_widget, widget=metadata_layout))
             # needs to be changed to use functools.partial to pass both widget directly, 
             # the one being revealed and the one to be hidden
+            # simlar to: metadata_button.on_click(functools.partial(show_hide_widget, reveal=metadata_layout, hide=downloader))
             # ensure metadata is hidden when showing the downloader
             # try:
             #     metadata_layout.visible = False
@@ -407,17 +388,10 @@ def build_download_widget(ds, mapping_var_names, frequency_selector=True):
 
 def build_metadata_widget(attrs):
     metadata_text = dict_to_html_ul(attrs)
-    # metadata_layout = pn.Row(Spacer(width=10), pn.Column(Spacer(height=120),
-    #                                             Div(text=f'<font size = "2" color = "darkslategray" ><b>Metadata<b></font> {metadata_text}'), 
-    #                                             width=400, sizing_mode='fixed'))
-    
-    # metadata_layout.visible = False
-
     metadata_layout = Div(
         text=f'<font size = "2" color = "darkslategray" ><b>Metadata<b></font> {metadata_text}',
         width=500,
     )
-
     metadata_button = Button(
         label="Metadata",
         height=30,
@@ -425,42 +399,3 @@ def build_metadata_widget(attrs):
     )  # , width_policy='fixed'
     # metadata_button.on_click(show_hide_metadata_widget)
     return metadata_layout, metadata_button
-
-
-# def build_download_widget(ds, mapping_var_names, frequency_selector):
-#     export_resampling_option = pn.widgets.RadioButtonGroup(name='Resamplig', 
-#                                               options=['Raw', 'Resampled'])    
-#     event_log = Div(text=f"""<br><br> <br><br>""")
-#     try:
-#         time_dim = var_coord[0]
-#         date_time_range_slider = pn.widgets.DatetimeRangeSlider(
-#             name='Date Range',
-#             start=ds.coords[time_dim].values.min(), end=ds.coords[time_dim].values.max(),
-#             value=(ds.coords[time_dim].values.min(), ds.coords[time_dim].values.max())        )
-#     except:
-#         date_time_range_slider = Div(text=f"""<br><br> Time Dimension not available """)
-    
-#     checkbox_group = pn.FlexBox(*[pn.widgets.Checkbox(name=str(i)) for i in mapping_var_names.keys()])
-#     select_output_format = pn.widgets.Select(name='Export Format', options=['NetCDF', 'CSV', 'Parquet'])
-    
-#     select_output_format_mapping = {'NetCDF':'nc', 'CSV':'csv', 'Parquet':'pq'}
-    
-#     export_button = Button(
-#         label="Export",
-#         height=30,
-#         width=120,
-#     )  
-#     # export_button.on_click(show_hide_export_widget)
-    
-    
-#     export_options_button = Button(
-#         label="Download",
-#         height=30,
-#         width_policy='fit'
-#         # width=30,
-#     )  # , width_policy='fixed'
-#     export_options_button.on_click(export_selection)
-#     if not frequency_selector: 
-#         export_resampling_option.visible = False
-    
-#     return export_button, checkbox_group, date_time_range_slider, export_options_button, event_log, select_output_format, export_resampling_option
