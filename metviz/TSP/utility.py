@@ -123,6 +123,115 @@ pandas_frequency_offsets = {
         }
 
 
+# ---------------------------------------------------------------------------
+# Variable-selection helpers
+# ---------------------------------------------------------------------------
+
+# Names that identify coordinate / axis variables — not useful as plotted data.
+# Checked against the lowercased variable name.
+_COORD_LIKE_NAMES = frozenset({
+    'latitude', 'longitude', 'lat', 'lon',
+    'time', 'depth', 'z', 'altitude', 'alt', 'height',
+    'pressure', 'pres', 'lev', 'level',
+    'station', 'profile', 'trajectory', 'obs',
+    'row_size', 'rowsize', 'rowSize',
+})
+
+# Variable-name suffixes that indicate QC / flag / error variables.
+_QC_SUFFIXES = ('_qc', '_flag', 'flag', 'qc', 'woce', '_err', '_error', '_status')
+
+
+def is_plottable(name: str, var) -> bool:
+    """Return True if *var* looks like a numeric data variable worth plotting.
+
+    Rules:
+    - Must have at least one dimension.
+    - Must be a numeric dtype (float or integer — not string / object / bool).
+    - Name must not be a well-known coordinate / axis identifier.
+    - Name must not end with a recognised QC / flag suffix.
+    """
+    if var.ndim < 1:
+        return False
+    if var.dtype.kind not in 'fiu':   # float, signed-int, unsigned-int
+        return False
+    name_l = name.lower()
+    if name_l in _COORD_LIKE_NAMES:
+        return False
+    if any(name_l.endswith(s) for s in _QC_SUFFIXES):
+        return False
+    return True
+
+
+def safe_check_var(ds, var: str) -> bool:
+    """Return True if *var* can be loaded from *ds* without error."""
+    try:
+        ds[var].values
+        return True
+    except Exception as e:
+        print(f"safe_check: cannot load {var!r}: {e}")
+        return False
+
+
+def get_plottable_vars(ds) -> list:
+    """Return the list of data-variable names in *ds* suitable for x-y plotting.
+
+    Uses ``ds.data_vars`` (excludes proper coordinate variables), then applies
+    :func:`is_plottable` and a live-access check.  This approach works correctly
+    for DSG (Discrete Sampling Geometry) datasets where the observation dimension
+    is not registered as a named coordinate — the old heuristic based on
+    coord-in-dims intersection failed for those layouts.
+    """
+    return [
+        name for name in ds.data_vars
+        if is_plottable(name, ds[name]) and safe_check_var(ds, name)
+    ]
+
+
+def get_axis_candidates(ds, var_name: str) -> list:
+    """Return variable / coordinate names that can serve as the x or y axis
+    when plotting *var_name*.
+
+    Priority order:
+    1. Named dimension indexes already registered on the variable (proper dim coords).
+    2. Any 1-D coordinate or data variable that shares one of the variable's
+       dimensions and has a datetime or numeric dtype.  This picks up cases like
+       ``depth(obs)``, ``pressure(obs)``, ``time(obs)`` in DSG profile data where
+       the observation dimension has no registered coord.
+
+    Returns an empty list only when the variable has no dimensions at all.
+    """
+    var = ds[var_name]
+    candidates: list = []
+    seen: set = set()
+
+    # 1. Named indexes (proper dimension coordinates — highest priority)
+    for idx_name in var.indexes:
+        if idx_name not in seen:
+            candidates.append(idx_name)
+            seen.add(idx_name)
+
+    # 2. Any 1-D variable sharing a dimension that could label the axis
+    all_names = list(ds.coords) + list(ds.data_vars)
+    for dim in var.dims:
+        for name in all_names:
+            if name in seen or name == var_name:
+                continue
+            candidate = ds[name]
+            if candidate.ndim != 1 or candidate.dims[0] != dim:
+                continue
+            if candidate.dtype.kind in 'fiu' or np.issubdtype(candidate.dtype, np.datetime64):
+                candidates.append(name)
+                seen.add(name)
+
+    # 3. Fall back to raw dimension names so the selector is never empty
+    for dim in var.dims:
+        if dim not in seen:
+            candidates.append(dim)
+            seen.add(dim)
+
+    return candidates
+
+
 def generate_download_string():
     """Generate download url and token for downloading a dataframe
 
