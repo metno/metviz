@@ -1,28 +1,34 @@
-
 import param
 import panel as pn
 
-class Javascript(pn.reactive.ReactiveHTML):
-    value = param.String(
+
+class Redirector(pn.reactive.ReactiveHTML):
+    """Safe client-side redirect helper.
+
+    Set `url` to an absolute or relative URL to navigate the browser there.
+    Uses `window.location.assign()` directly — no eval(), no code injection.
+    The value is reset to '' after the redirect fires so the component can
+    be reused.
+    """
+
+    url = param.String(
         default="",
         allow_None=False,
-        doc="""Javascript code. When the value is set it will be evaluated in the browser.
-        Afterwards the value will be set to ''""",
+        doc="Target URL. Setting this triggers a client-side redirect.",
     )
 
     def __init__(self):
         super().__init__(height=0, width=0, margin=0)
 
-    def eval(self, value: str):
-        self.value = value
+    def redirect(self, target_url: str):
+        self.url = target_url
 
-    _template = "<div id='pn-container'></div>"
+    _template = "<div id='pn-redirector'></div>"
     _scripts = {
-        "value": """
-        console.log(data.value)
-        
-        if (data.value!=''){
-            eval(data.value)
-            data.value=""
-        }"""
+        "url": """
+        if (data.url !== '') {
+            window.location.assign(data.url);
+            data.url = '';
+        }
+        """
     }

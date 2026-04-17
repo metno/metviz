@@ -50,7 +50,6 @@ import gc
 from bokeh.models import Button, Div
 from bokeh.layouts import column, Spacer
 import sys
-import gc
 
 def on_server_loaded():
     print("server loaded")
@@ -66,20 +65,6 @@ def on_session_created(session_context):
 
 def on_session_destroyed(session_context):
     print("session destroyed")
-    print("")
-    print(dir(session_context))
-    try:
-        del ds
-        gc.collect()
-    except UnboundLocalError:
-        pass
-    try:
-        del plot_widget
-        gc.collect()
-    except UnboundLocalError:
-        pass
-    plot_widget = None
-    gc.collect()
     sys.stdout.flush()
 
 
@@ -121,14 +106,11 @@ def validate_opendap(url):
     """
     try:
         nc_url = str(url)
-        # try to load the data trough xarray
-        xr.open_dataset(nc_url, decode_times=False)
-        valid_opendap = True
-    except TypeError:
-        valid_opendap = False
-    except OSError:
-        valid_opendap = False
-    return valid_opendap
+        with xr.open_dataset(nc_url, decode_times=False):
+            pass
+        return True
+    except (TypeError, OSError):
+        return False
 
 
 pandas_frequency_offsets = {
@@ -163,46 +145,6 @@ def generate_download_string():
         r"[\=\+\/]", lambda m: {"+": "-", "/": "_", "=": ""}[m.group(0)], rv
     )
     filename = str(unique) + "." + str(output_format)
-    s = TimestampSigner("secret-key")
-    download_token = s.sign(filename).decode()
-    # dirpath = os.path.join(os.path.dirname(__file__),'static', download)
-    # dirpath = os.environ["TSPLOT_DOWNLOAD"]
-    # TSPLOT_DOWNLOAD = os.path.join(os.path.dirname(__file__),'static', 'download')
-    dirpath = os.environ["TSPLOT_DOWNLOAD"]
-    outfile = Path(dirpath, str(download_token))
-    return outfile
-
-
-def dict_to_html(dd, level=0):
-    """
-    Convert dict to html using basic html tags
-    """
-    text = ''
-    for k, v in dd.items():
-        text += '<br>' + '&nbsp;'*(4*level) + '<b>%s</b>: %s' % (k, dict_to_html(v, level+1) if isinstance(v, dict) else (json.dumps(v) if isinstance(v, list) else v))
-    return text
-
-def dict_to_html_ul(dd, level=0):
-    """
-    Convert dict to html using ul/li tags
-    """
-    text = '<ul>'
-    for k, v in dd.items():
-        text += '<li><b>%s</b>: %s</li>' % (k, dict_to_html_ul(v, level+1) if isinstance(v, dict) else (json.dumps(v) if isinstance(v, list) else v))
-    text += '</ul>'
-    return text
-
-def get_download_link(data):
-    processing_endpoint = os.environ["PROCESSING_ENDPOINT"]
-    download_endpoint = os.environ["DOWNLOAD_ENDPOINT"]
-    s: requests.Session = requests.Session()
-    url: str = f"{processing_endpoint}/process_data"
-    r = s.post(url, data=data)
-    print(url, data)
-    download_endpoint = f"{download_endpoint}/results"
-    download_url = f"{download_endpoint}/{r.json()['download_token']}"
-    return download_url
-
     s = TimestampSigner("secret-key")
     download_token = s.sign(filename).decode()
     # dirpath = os.path.join(os.path.dirname(__file__),'static', download)
@@ -278,11 +220,16 @@ def load_data(url):
     except OSError as e:
         error_log = e
     if ds and not ds.coords:
-        erdapp_uglyness = list(dict(xr.open_dataset(url).dims).keys())[0]
-        renamed_vars = {i:i.replace(erdapp_uglyness+".", "") for i in list(xr.open_dataset(url).variables.keys())}
-        new_nc_url = url+'?'+'time,'+','.join(list(xr.open_dataset(url).variables)).replace(f"{erdapp_uglyness}.", "").replace(f"time,", "")
-        del ds
-        gc.collect()
+        with xr.open_dataset(url) as ds_probe:
+            erdapp_uglyness = list(dict(ds_probe.dims).keys())[0]
+            renamed_vars = {i: i.replace(erdapp_uglyness + ".", "") for i in list(ds_probe.variables.keys())}
+            new_nc_url = (
+                url + "?" + "time,"
+                + ",".join(list(ds_probe.variables))
+                .replace(f"{erdapp_uglyness}.", "")
+                .replace("time,", "")
+            )
+        ds.close()
         ds = xr.open_dataset(new_nc_url)
         ds = ds.set_coords(f"{erdapp_uglyness}.time")
         ds = ds.swap_dims(s=f"time")
@@ -303,7 +250,7 @@ def load_data(url):
     return ds, decoded_time, error_log, monotonic, featureType
 
 
-def show_hide_widget(event=None, widget=None):
+def show_hide_widget(event=None, widget=None, hide=None, reveal=None):
     """Toggle visibility of a download widget.
 
     Accepts either an event (from `.on_click`) or a widget object passed directly
@@ -312,6 +259,9 @@ def show_hide_widget(event=None, widget=None):
     """
     # determine the target widget to toggle
     target = widget
+    to_hide = hide
+    to_reveal = reveal
+    
     if target is None:
         # event may be a Bokeh/Panel event with different attributes
         try:
@@ -322,6 +272,12 @@ def show_hide_widget(event=None, widget=None):
     try:
         if target.visible:
             target.visible = False
+            try:        
+                if to_reveal:
+                    to_reveal.visible = True
+            except Exception:
+                print("to_reveal exception in show_hide_widget")
+                pass
         else:
             # This will not work,
             # metadata_button.on_click(functools.partial(show_hide_widget, widget=metadata_layout))
@@ -335,10 +291,17 @@ def show_hide_widget(event=None, widget=None):
             #     print("fourth exception in show_hide_widget")
             #     pass
             target.visible = True
+            try:        
+                if to_hide:
+                    to_hide.visible = False
+            except Exception:
+                print("to_hide exception in show_hide_widget")
+                pass
     except Exception:
         print("fifth exception in show_hide_widget")
         # best-effort toggle: if the target doesn't have .visible, ignore
         pass
+
 
 def build_download_widget(ds, mapping_var_names, frequency_selector=True):
     """docstring"""  
@@ -346,7 +309,7 @@ def build_download_widget(ds, mapping_var_names, frequency_selector=True):
     try:
         var_coord = [i for i in ds.coords if ds.coords.dtypes[i] == np.dtype('<M8[ns]')]
         time_coord = True
-    except:
+    except Exception:
         time_coord = False
         var_coord = list(ds.coords)
     try:
@@ -357,7 +320,7 @@ def build_download_widget(ds, mapping_var_names, frequency_selector=True):
             value=(ds.coords[time_dim].values.min(), ds.coords[time_dim].values.max())        )
         export_resampling_option = pn.widgets.RadioButtonGroup(name='Resamplig', 
                                               options=['Raw', 'Resampled'])  
-    except:
+    except Exception:
         date_time_range_slider = Div(text=f"""<br><br> Time Dimension not available """)
         export_resampling_option = Div(text=f"""<br><br> Resampling disabled """)
     checkbox_group = pn.FlexBox(*[pn.widgets.Checkbox(name=str(i)) for i in mapping_var_names.keys()])
@@ -397,5 +360,6 @@ def build_metadata_widget(attrs):
         height=30,
         width=120,
     )  # , width_policy='fixed'
+    metadata_layout.visible = False
     # metadata_button.on_click(show_hide_metadata_widget)
     return metadata_layout, metadata_button
