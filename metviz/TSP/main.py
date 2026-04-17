@@ -160,7 +160,7 @@ def plot_quadmesh(variable_name, dataset, title=None):
         return None
 
 
-def plot(var, ds, dimension=None, title=None, frequency=None, monotonic=None, featureType=None):
+def plot(var, ds, dimension=None, title=None, frequency=None, monotonic=None, featureType=None, invert_yaxis: bool = False, swap_axes: bool = False):
     # frequency selector should be handled outside the plot method
     # which should take as input an optional resampling frequency instead of the frequency selector widget
 
@@ -237,6 +237,8 @@ def plot(var, ds, dimension=None, title=None, frequency=None, monotonic=None, fe
                 invert_yaxes = True
         if ds[var].attrs.get('positive', '') == 'down':
             invert_yaxes = True
+        # User override: checkbox can force inversion regardless of auto-detection.
+        invert_yaxes = invert_yaxes or invert_yaxis
 
         # Always put the selected dimension on the x-axis.
         # hvplot uses the DataArray values as the y-axis automatically.
@@ -264,6 +266,8 @@ def plot(var, ds, dimension=None, title=None, frequency=None, monotonic=None, fe
                 )
             if invert_yaxes:
                 plot_widget[-1].object.opts(invert_yaxis=True)
+            if swap_axes:
+                plot_widget[-1].object.opts(invert_axes=True)
         except Exception as exc:
             logger.warning(
                 f"plot() failed (var={var!r}, dimension={dimension!r}): {exc} — "
@@ -292,7 +296,7 @@ def on_var_select(event):
     if featureType == 'timeseriesprofile' and quadmesh_checkbox:
         quadmesh_checkbox.visible = len(new_options) >= 2
     with pn.param.set_values(main_app, loading=True):
-        plot_container[-2] = plot(var=result, ds=ds, dimension=dimension_group.value, frequency=frequency_selector.value, title=var, monotonic=monotonic, featureType=featureType)
+        plot_container[-2] = plot(var=result, ds=ds, dimension=dimension_group.value, frequency=frequency_selector.value, title=var, monotonic=monotonic, featureType=featureType, invert_yaxis=invert_yaxis_checkbox.value, swap_axes=swap_axes_checkbox.value)
         logger.info(f'selected variable: {result}')
 
         if quadmesh_checkbox:
@@ -307,7 +311,7 @@ def on_dimension_select(event):
     dimension = event.obj.value
     with pn.param.set_values(main_app, loading=True):
         selected_var = [key for key, value in mapping_var_names.items() if value == variables_selector.value]
-        plot_container[-2] = plot(var=selected_var, ds=ds, dimension=dimension, title=variables_selector.value, frequency=frequency_selector.value, monotonic=monotonic, featureType=featureType)
+        plot_container[-2] = plot(var=selected_var, ds=ds, dimension=dimension, title=variables_selector.value, frequency=frequency_selector.value, monotonic=monotonic, featureType=featureType, invert_yaxis=invert_yaxis_checkbox.value, swap_axes=swap_axes_checkbox.value)
         logger.info(f'dimension selected: {dimension}')
         # print(dir(plot_container[-2]))
         # print(plot_container[-2].height, plot_container[-2].height_policy)
@@ -323,7 +327,7 @@ def on_frequency_select(event):
     var = variables_selector.value
     result = [key for key, value in mapping_var_names.items() if value == var]
     with pn.param.set_values(main_app, loading=True):
-        plot_container[-2] = plot(var=result, ds=ds, title=var, dimension=dimension_group.value, frequency=frequency, monotonic=monotonic, featureType=featureType)
+        plot_container[-2] = plot(var=result, ds=ds, title=var, dimension=dimension_group.value, frequency=frequency, monotonic=monotonic, featureType=featureType, invert_yaxis=invert_yaxis_checkbox.value, swap_axes=swap_axes_checkbox.value)
         logger.info(f'selected variable: {result}, frequency: {frequency}')
 
 
@@ -339,10 +343,34 @@ def on_quadmesh_select(event):
             result = [key for key, value in mapping_var_names.items() if value == var]
             quadmesh_plot.insert(-1, plot_quadmesh(result[0], ds))
         else:
-            # plot_container.pop(-2) 
+            # plot_container.pop(-2)
             quadmesh_plot.visible = False
             quadmesh_plot.pop(-1)
-        print(f'quadmesh: {event.obj.value}')   
+        print(f'quadmesh: {event.obj.value}')
+
+
+def on_invert_yaxis_select(event):
+    with pn.param.set_values(main_app, loading=True):
+        selected_var = [key for key, value in mapping_var_names.items() if value == variables_selector.value]
+        plot_container[-2] = plot(
+            var=selected_var, ds=ds, dimension=dimension_group.value,
+            title=variables_selector.value, frequency=frequency_selector.value,
+            monotonic=monotonic, featureType=featureType,
+            invert_yaxis=invert_yaxis_checkbox.value,
+            swap_axes=swap_axes_checkbox.value,
+        )
+
+
+def on_swap_axes_select(event):
+    with pn.param.set_values(main_app, loading=True):
+        selected_var = [key for key, value in mapping_var_names.items() if value == variables_selector.value]
+        plot_container[-2] = plot(
+            var=selected_var, ds=ds, dimension=dimension_group.value,
+            title=variables_selector.value, frequency=frequency_selector.value,
+            monotonic=monotonic, featureType=featureType,
+            invert_yaxis=invert_yaxis_checkbox.value,
+            swap_axes=swap_axes_checkbox.value,
+        )   
 
 
 
@@ -459,7 +487,7 @@ if 'url' not in pn.state.session_args:
         # featureType = get_featuretype(url)
         feature_type_mapping = {
             "timeseries": "TSP",
-            "trajectory": "trj",
+            "trajectory": "TRJ",
             "profile": "TSP",
         }
         
@@ -578,7 +606,10 @@ else:
             quadmesh_checkbox.visible = len(axis_options) >= 2
         else:
             quadmesh_checkbox = None
-        
+
+        invert_yaxis_checkbox = pn.widgets.Checkbox(name='Invert Y-axis', value=False)
+        swap_axes_checkbox = pn.widgets.Checkbox(name='Swap axes', value=False)
+
     if ds:
         # Export Widgets
         export_button, wbx, date_time_range_slider, export_options_button, event_log, select_output_format, export_resampling = build_download_widget(ds, mapping_var_names, frequency_selector)
@@ -604,6 +635,8 @@ else:
 
         variables_selector.param.watch(on_var_select, parameter_names=['value'])
         dimension_group.param.watch(on_dimension_select, parameter_names=['value'])
+        invert_yaxis_checkbox.param.watch(on_invert_yaxis_select, parameter_names=['value'])
+        swap_axes_checkbox.param.watch(on_swap_axes_select, parameter_names=['value'])
         #if quadmesh_checkbox:
         #    quadmesh_checkbox.param.watch(on_quadmesh_select, parameter_names=['value'])
         selected_var = [key for key, value in mapping_var_names.items() if value == variables_selector.value]
@@ -615,16 +648,17 @@ else:
         # quadmesh_plot = pn.Row(Div(text=f'<font size = "2" color = "darkslategray" >QUADMESHPLOT PLACEHOLDER</font>'))
         quadmesh_plot = pn.Row(sizing_mode='scale_both')
         quadmesh_plot.visible = False
-        plot_container = pn.Column(pn.Row(variables_selector, 
-                                          pn.Row(Div(text=f'<font size = "2" color = "darkslategray" >Dimension</font>'), 
-                                                 dimension_group), 
-                                          frequency_selector, 
-                                          buttons), 
-                                   quadmesh_checkbox, 
-                                   quadmesh_plot, 
-                                   plot_plot, 
-                                   Spacer(height=10), 
-                                   sizing_mode='scale_both') # , sizing_mode='scale_both'
+        plot_container = pn.Column(pn.Row(variables_selector,
+                                          pn.Row(Div(text=f'<font size = "2" color = "darkslategray" >Dimension</font>'),
+                                                 dimension_group),
+                                          frequency_selector,
+                                          pn.Column(invert_yaxis_checkbox, swap_axes_checkbox),
+                                          buttons),
+                                   quadmesh_checkbox,
+                                   quadmesh_plot,
+                                   plot_plot,
+                                   Spacer(height=10),
+                                   sizing_mode='scale_both')
 
         main_app = pn.Row(plot_container, 
                         Spacer(width=10), 

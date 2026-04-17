@@ -6,6 +6,10 @@ WORKDIR /app
 COPY requirements.txt requirements.txt
 RUN pip install -r requirements.txt
 
+RUN pip install -U git+https://github.com/opengeos/anymap
+RUN pip install -U gdown
+RUN pip install -U localtileserver
+
 EXPOSE 7000
 
 COPY app /app
