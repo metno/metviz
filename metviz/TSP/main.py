@@ -62,7 +62,7 @@ hv.extension('bokeh')
 ds = None
 
 # NetCDF standard missing/fill value used by many CF-convention datasets
-FILL_VALUE = FILL_VALUE
+FILL_VALUE = 9.96921e36
 
 # CREATE LOGGER
 import logging
