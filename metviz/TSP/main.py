@@ -40,7 +40,12 @@ import xarray as xr
 import panel as pn
 import numpy as np
 import holoviews as hv
-from utility import ModelURL, pandas_frequency_offsets, get_download_link, load_data, validate_url, build_metadata_widget, build_download_widget, show_hide_widget, on_server_loaded, on_session_destroyed, validate_opendap
+from utility import (
+    ModelURL, pandas_frequency_offsets, get_download_link, load_data,
+    validate_url, build_metadata_widget, build_download_widget, show_hide_widget,
+    on_server_loaded, on_session_destroyed, validate_opendap,
+    get_plottable_vars, get_axis_candidates, safe_check_var,
+)
 from js_util import Redirector
 
 from starlette.templating import Jinja2Templates
@@ -63,6 +68,17 @@ ds = None
 
 # NetCDF standard missing/fill value used by many CF-convention datasets
 FILL_VALUE = 9.96921e36
+
+
+def _is_time_like(name: str) -> bool:
+    """Return True if *name* refers to a datetime-like axis in the current dataset."""
+    try:
+        idx = ds.indexes.get(name)
+        if idx is not None:
+            return idx.dtype.kind in 'Mm' or isinstance(idx, xr.CFTimeIndex)
+        return np.issubdtype(ds[name].dtype, np.datetime64)
+    except Exception:
+        return False
 
 # CREATE LOGGER
 import logging
@@ -258,43 +274,18 @@ def plot(var, ds, dimension=None, title=None, frequency=None, monotonic=None, fe
 
 # method to update the plot when a new variable is selected    
 def on_var_select(event):
-    # quadmesh stopped working
-    # need to check
     var = event.obj.value
     result = [key for key, value in mapping_var_names.items() if value == var]
-    # dimension_group.options = list(ds[result].indexes)
-    # reorder the dimension options to put the time dimension first if it exists,
-    # perform the chack based on the values types rather than the dimension name 
-    # to avoid issues with different naming conventions (e.g. time vs Time vs TIME)
-    # dimension_group.options = ds[result].indexes
-    # reorder the dimension options to put the time dimension first if it exists:
-    for name in ds[result].indexes:
-        # 1. Check for standard numpy/pandas datetime or timedelta
-        is_time = ds[result].indexes[name].dtype.kind in 'Mm'
-        # 2. Check for xarray's custom CFTimeIndex (for non-standard calendars)
-        if isinstance(ds[result].indexes[name], xr.CFTimeIndex):
-            is_time = True
-        if is_time:
-            print(f"'{name}' is a time-related index.")
-            # Move the time dimension to the beginning of the list
-            dimension_group.options = [name] + [opt for opt in dimension_group.options if opt != name]  
-        else:
-            print(f"'{name}' is NOT a time-related index.")
-    dimension_group.value = dimension_group.options[0]  # reset the dimension selection to the first option        
-        
-        
+    if not result:
+        return
+    # Rebuild axis candidates for the newly selected variable
+    new_options = get_axis_candidates(ds, result[0])
+    new_options = sorted(new_options, key=lambda n: (0 if _is_time_like(n) else 1, n))
+    dimension_group.options = new_options or ['obs']
+    dimension_group.value = dimension_group.options[0]
 
-    if len(ds[result].indexes) >= 2 and featureType == 'timeseriesprofile':
-        logger.info('activating quadmesh')
-        #quadmesh_plot.visible = True
-        if quadmesh_checkbox:
-            quadmesh_checkbox.visible = True
-        #quadmesh_plot.visible = True
-    else:
-        #quadmesh_plot.visible = False
-        if quadmesh_checkbox:
-            quadmesh_checkbox.visible = False
-        #quadmesh_plot.visible = False
+    if featureType == 'timeseriesprofile' and quadmesh_checkbox:
+        quadmesh_checkbox.visible = len(new_options) >= 2
     with pn.param.set_values(main_app, loading=True):
         plot_container[-2] = plot(var=result, ds=ds, dimension=dimension_group.value, frequency=frequency_selector.value, title=var, monotonic=monotonic, featureType=featureType)
         logger.info(f'selected variable: {result}')
@@ -349,15 +340,7 @@ def on_quadmesh_select(event):
         print(f'quadmesh: {event.obj.value}')   
 
 
-def safe_check(var):
-    try:
-        ds[var].values
-        return var
-    except Exception as e:
-        # Handle the exception (e.g., log it, return False, etc.)
-        print(f"Error processing {var}: {e}")
-        return False
-    
+
 
         
 def export_selection(event):
@@ -552,63 +535,42 @@ else:
         
         
     if ds:
-        # find plottable variables
-        if featureType == 'timeseries':
-            plottable_vars = [j for j in ds if len([value for value in list(ds[j].coords) if value in list(ds.dims)]) >= 1]
-            plottable_vars = [i for i in plottable_vars if len(ds[i].dims) == len(ds.indexes)]
-            plottable_vars = [i for i in plottable_vars if safe_check(i)]
-        if featureType == 'profile':
-            plottable_vars = [j for j in ds if len([value for value in list(ds[j].coords) if value in list(ds.dims)]) >= 1]
-            # plottable_vars = [i for i in plottable_vars if len(ds[i].dims) == len(ds.indexes)]
-            plottable_vars = [i for i in plottable_vars if safe_check(i)]
-        if featureType == 'trajectory':
-            plottable_vars = [j for j in ds if len([value for value in list(ds[j].coords) if value in list(ds.dims)]) >= 1]
-            # plottable_vars = [i for i in plottable_vars if len(ds[i].dims) == len(ds.indexes)]
-            plottable_vars = [i for i in plottable_vars if safe_check(i)]
-        if featureType == 'timeseriesprofile':
-            plottable_vars = [j for j in ds if len([value for value in list(ds[j].coords) if value in list(ds.dims)]) >= 1]
-            # plottable_vars = [i for i in plottable_vars if len(ds[i].dims) == len(ds.indexes)]
-            plottable_vars = [i for i in plottable_vars if safe_check(i)]
-        
-
-        # build a dictionary of variables and their long names
-        print("plottable_vars:", plottable_vars )
-        mapping_var_names = {}
+        # Identify plottable variables using the featureType-agnostic helper.
+        # get_plottable_vars() uses ds.data_vars (not ds which includes coords),
+        # filters to numeric dtypes, skips coordinate-like names, and applies
+        # a safe access check. This correctly handles DSG datasets where the
+        # obs dimension has no registered coordinate.
+        plottable_vars = get_plottable_vars(ds)
         logger.info(f"Identified plottable variables: {plottable_vars}")
+
+        # Build a dict mapping internal name → display label (long_name [name])
+        mapping_var_names = {}
         for i in plottable_vars:
-            if int(len(list(ds[i].coords)) != 0):
-                try:
-                    title = f"{ds[i].attrs['long_name']} [{i}]"
-                except KeyError:
-                    title = f"{i}"
-                mapping_var_names[i] = title
-                
-        # add a select widget for variables, uses long names
+            try:
+                title = f"{ds[i].attrs['long_name']} [{i}]"
+            except KeyError:
+                title = f"{i}"
+            mapping_var_names[i] = title
+
+        # Variable selector dropdown uses the display labels
         variables_selector = pn.widgets.Select(options=list(mapping_var_names.values()), name='Data Variable')
 
         result = [key for key, value in mapping_var_names.items() if value == variables_selector.value]
-        dimension_group = pn.widgets.RadioBoxGroup(name='Dimension', options=list(ds[result].indexes), inline=False)
-        for name in ds[result].indexes:
-            # 1. Check for standard numpy/pandas datetime or timedelta
-            is_time = ds[result].indexes[name].dtype.kind in 'Mm'
-            # 2. Check for xarray's custom CFTimeIndex (for non-standard calendars)
-            if isinstance(ds[result].indexes[name], xr.CFTimeIndex):
-                is_time = True
-            if is_time:
-                print(f"'{name}' is a time-related index.")
-                # Move the time dimension to the beginning of the list
-                dimension_group.options = [name] + [opt for opt in dimension_group.options if opt != name]  
-            else:
-                print(f"'{name}' is NOT a time-related index.")
-        dimension_group.value = dimension_group.options[0]  # set the default value to the first option 
-            
+
+        # Axis candidates: named indexes first, then any 1-D variable sharing
+        # the same dimension (picks up depth/pressure for DSG profile data).
+        axis_options = get_axis_candidates(ds, result[0]) if result else []
+        # Sort: put time-like candidates first so the default is sensible.
+        axis_options = sorted(axis_options, key=lambda n: (0 if _is_time_like(n) else 1, n))
+        dimension_group = pn.widgets.RadioBoxGroup(
+            name='Dimension', options=axis_options or ['obs'], inline=False
+        )
+        dimension_group.value = dimension_group.options[0]
+
         if featureType == 'timeseriesprofile':
             quadmesh_checkbox = pn.widgets.Checkbox(name='Quadmesh', value=False)
-            quadmesh_checkbox.param.watch(on_quadmesh_select, parameter_names=['value'])  
-            if len(ds[result].indexes) >= 2:
-                quadmesh_checkbox.visible = True
-            else:
-                quadmesh_checkbox.visible = False  
+            quadmesh_checkbox.param.watch(on_quadmesh_select, parameter_names=['value'])
+            quadmesh_checkbox.visible = len(axis_options) >= 2
         else:
             quadmesh_checkbox = None
         
