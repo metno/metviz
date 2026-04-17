@@ -44,7 +44,7 @@ from utility import (
     ModelURL, pandas_frequency_offsets, get_download_link, load_data,
     validate_url, build_metadata_widget, build_download_widget, show_hide_widget,
     on_server_loaded, on_session_destroyed, validate_opendap,
-    get_plottable_vars, get_axis_candidates, safe_check_var,
+    get_plottable_vars, get_axis_candidates, safe_check_var, AXIS_BLACKLIST,
 )
 from js_util import Redirector
 
