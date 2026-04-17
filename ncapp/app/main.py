@@ -13,6 +13,13 @@ from bokeh.embed import server_document
 from utility import URLStr, FeatureType, FeatureTypeEnum, guess_feature_type_from_data
 from pydantic import AnyHttpUrl
 
+# Panel / Bokeh backend URLs — must be set via environment variables.
+# No defaults are provided so a misconfigured deployment fails loudly at
+# request time rather than silently routing to the wrong server.
+PANEL_TSP_URL: str = os.environ.get("PANEL_TSP_URL", "")
+PANEL_TRJ_URL: str = os.environ.get("PANEL_TRJ_URL", "")
+BOKEH_URL: str = os.environ.get("BOKEH_URL", "")
+
 app = FastAPI(
     title="METAPI",
     description="Prototype API to render NetCDF Data [TS, TSP, TRJ] using Panel and Bokeh",
@@ -36,12 +43,9 @@ app.add_middleware(
 # take a url parameter as input
 @app.get("/TSP")
 async def tsp(url: str, render: bool, request: Request):
-    # This generates the script tag that tells the browser 
-    # to connect to the Panel server
-    PANEL_URL = "https://ncmet.wps.met.no/TSP"
-    # get PANEL_TSP_URL from environment variable
-    PANEL_TSP_URL = os.getenv("PANEL_TSP_URL", "https://ncmet.wps.met.no/TSP")
-    script = server_document(url=f"{PANEL_TSP_URL}", arguments={"url": url})
+    if not PANEL_TSP_URL:
+        raise HTTPException(status_code=503, detail="PANEL_TSP_URL environment variable is not set")
+    script = server_document(url=PANEL_TSP_URL, arguments={"url": url})
     # return as htmlresponse
     if not render:
         return HTMLResponse(content=script, status_code=200)
@@ -54,10 +58,9 @@ async def tsp(url: str, render: bool, request: Request):
 
 @app.get("/TRJ")
 async def trj(url: str, render: bool, request: Request):
-    # This generates the script tag that tells the browser 
-    # to connect to the Panel server
-    PANEL_TRJ_URL = os.getenv("PANEL_TRJ_URL", "https://ncmet.wps.met.no/TRJ")
-    script = server_document(url=f"{PANEL_TRJ_URL}", arguments={"url": url})
+    if not PANEL_TRJ_URL:
+        raise HTTPException(status_code=503, detail="PANEL_TRJ_URL environment variable is not set")
+    script = server_document(url=PANEL_TRJ_URL, arguments={"url": url})
     # return as htmlresponse
     if not render:
         return HTMLResponse(content=script, status_code=200)
@@ -69,10 +72,9 @@ async def trj(url: str, render: bool, request: Request):
     
 @app.get("/bokehapp")
 async def bokeh(url: str, render: bool, request: Request):
-    # This generates the script tag that tells the browser 
-    # to connect to the Paneli server
-    BOKEH_URL = os.getenv("BOKEH_URL", "https://bokeh.wps.met.no/app")
-    script = server_document(url=f"{BOKEH_URL}", arguments={"url": url})
+    if not BOKEH_URL:
+        raise HTTPException(status_code=503, detail="BOKEH_URL environment variable is not set")
+    script = server_document(url=BOKEH_URL, arguments={"url": url})
     # return as htmlresponse
     if not render:
         return HTMLResponse(content=script, status_code=200)
@@ -85,15 +87,15 @@ async def bokeh(url: str, render: bool, request: Request):
 @app.get("/bokehplot")
 async def bokehplot(feature_type: FeatureTypeEnum, request: Request, render: bool = False, url: AnyHttpUrl = Query(..., description="Enter a valid OPeNDAP url")):
 
-    # This generates the script tag that tells the browser 
-    # to connect to the Panel server
     if feature_type in ['timeSeries', 'timeSeriesProfile', 'profile']:
-        BOKEH_URL = 'https://ncmet.wps.met.no/TSP'
+        panel_url = PANEL_TSP_URL
     elif feature_type == 'trajectory':
-        BOKEH_URL = 'https://ncmet.wps.met.no/TRJ'
+        panel_url = PANEL_TRJ_URL
     else:
         return HTMLResponse(content=f"Plotting not implemented yet for featureType: {feature_type}", status_code=422)
-    script = server_document(url=f"{BOKEH_URL}", arguments={"url": url})
+    if not panel_url:
+        raise HTTPException(status_code=503, detail=f"Panel URL environment variable is not set for featureType: {feature_type}")
+    script = server_document(url=panel_url, arguments={"url": url})
     # return as htmlresponse
     if not render:
         return HTMLResponse(content=script, status_code=200)
@@ -126,13 +128,13 @@ async def metviz(url: str, render: bool, feature_type: str, guess_featuretype: b
             raise HTTPException(status_code=400, detail=str(e))
     else:
         feature_type = None
-    if feature_type and feature_type.value == 'timeSeries':
-        BOKEH_URL = 'https://ncmet.wps.met.no/TSP'
-    elif feature_type and feature_type.value == 'trajectory':
-        BOKEH_URL = 'https://ncmet.wps.met.no/TRJ'
+    if feature_type and feature_type.value == 'trajectory':
+        panel_url = PANEL_TRJ_URL
     else:
-        BOKEH_URL = 'https://ncmet.wps.met.no/TSP'
-    script = server_document(url=f"{BOKEH_URL}", arguments={"url": url})
+        panel_url = PANEL_TSP_URL
+    if not panel_url:
+        raise HTTPException(status_code=503, detail="Panel URL environment variable is not set")
+    script = server_document(url=panel_url, arguments={"url": url})
     # return as htmlresponse
     if not render:
         return HTMLResponse(content=script, status_code=200)
