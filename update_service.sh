@@ -2,7 +2,12 @@
 
 
 export SERVICE_NAME=$1
-export DOMAIN=$1.wps.met.no
+export DOMAIN1=$1.wps.met.no
+
+export SERVICE_NAME=$1
+export DOMAIN2=$2.wps.met.no
+
+export DOMAIN3=$3.wps.met.no
 
 docker stack rm $1
 sleep 10
