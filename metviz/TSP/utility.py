@@ -191,39 +191,61 @@ def get_axis_candidates(ds, var_name: str) -> list:
     """Return variable / coordinate names that can serve as the x or y axis
     when plotting *var_name*.
 
-    Priority order:
-    1. Named dimension indexes already registered on the variable (proper dim coords).
-    2. Any 1-D coordinate or data variable that shares one of the variable's
-       dimensions and has a datetime or numeric dtype.  This picks up cases like
-       ``depth(obs)``, ``pressure(obs)``, ``time(obs)`` in DSG profile data where
-       the observation dimension has no registered coord.
+    Only coordinate-like names are returned — never other data variables such
+    as temperature or salinity, which belong in the variable selector instead.
 
-    Returns an empty list only when the variable has no dimensions at all.
+    Priority order:
+    1. Named dimension indexes already registered on the variable (proper dim
+       coords — e.g. ``time``, ``depth`` when they are set as xarray indexes).
+    2. 1-D *coordinate* variables (``ds.coords``) sharing one of the variable's
+       dimensions with a datetime or numeric dtype.  Covers auxiliary coords like
+       ``latitude(time)``, ``longitude(time)``.
+    3. 1-D *data* variables in ``ds.data_vars`` sharing a dimension whose names
+       are in ``_COORD_LIKE_NAMES``.  This handles DSG datasets where ``z`` or
+       ``pressure`` land in data_vars instead of coords because the file does not
+       declare a ``coordinates`` attribute.
+
+    Step 3 deliberately excludes generic data variables (temperature, salinity,
+    etc.) — only names explicitly listed in ``_COORD_LIKE_NAMES`` qualify.
+
+    Falls back to the raw dimension name(s) so the selector is never empty.
     """
     var = ds[var_name]
     candidates: list = []
     seen: set = set()
 
-    # 1. Named indexes (proper dimension coordinates — highest priority)
+    # 1. Named indexes (proper dimension coordinates)
     for idx_name in var.indexes:
         if idx_name not in seen:
             candidates.append(idx_name)
             seen.add(idx_name)
 
-    # 2. Any 1-D variable sharing a dimension that could label the axis
-    all_names = list(ds.coords) + list(ds.data_vars)
     for dim in var.dims:
-        for name in all_names:
+        # 2. Auxiliary coordinates sharing this dimension
+        for name in ds.coords:
             if name in seen or name == var_name:
                 continue
-            candidate = ds[name]
-            if candidate.ndim != 1 or candidate.dims[0] != dim:
+            coord = ds[name]
+            if coord.ndim != 1 or coord.dims[0] != dim:
                 continue
-            if candidate.dtype.kind in 'fiu' or np.issubdtype(candidate.dtype, np.datetime64):
+            if coord.dtype.kind in 'fiu' or np.issubdtype(coord.dtype, np.datetime64):
                 candidates.append(name)
                 seen.add(name)
 
-    # 3. Fall back to raw dimension names so the selector is never empty
+        # 3. Data variables with coordinate-like names sharing this dimension
+        for name in ds.data_vars:
+            if name in seen or name == var_name:
+                continue
+            if name.lower() not in _COORD_LIKE_NAMES:
+                continue
+            dv = ds[name]
+            if dv.ndim != 1 or dv.dims[0] != dim:
+                continue
+            if dv.dtype.kind in 'fiu' or np.issubdtype(dv.dtype, np.datetime64):
+                candidates.append(name)
+                seen.add(name)
+
+    # 4. Fall back to the raw dimension name so the selector is never empty
     for dim in var.dims:
         if dim not in seen:
             candidates.append(dim)
