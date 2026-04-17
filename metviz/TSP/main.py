@@ -41,7 +41,7 @@ import panel as pn
 import numpy as np
 import holoviews as hv
 from utility import ModelURL, pandas_frequency_offsets, get_download_link, load_data, validate_url, build_metadata_widget, build_download_widget, show_hide_widget, on_server_loaded, on_session_destroyed, validate_opendap
-from js_util import Javascript
+from js_util import Redirector
 
 from starlette.templating import Jinja2Templates
 import json
@@ -58,8 +58,34 @@ import param
 
 env = Environment(loader=FileSystemLoader('/assets'))
 pn.param.ParamMethod.loading_indicator = True
-
+hv.extension('bokeh')
 ds = None
+
+# NetCDF standard missing/fill value used by many CF-convention datasets
+FILL_VALUE = FILL_VALUE
+
+# CREATE LOGGER
+import logging
+
+def create_logger():
+    logger = logging.getLogger(__name__)
+    logger.setLevel(logging.INFO)   
+    handler = logging.StreamHandler(sys.stdout)
+    handler.setLevel(logging.INFO)
+    formatter = logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s')
+    handler.setFormatter(formatter)
+    logger.addHandler(handler)  
+    return logger
+logger = create_logger()
+
+
+
+# USE logger to log messages instead of print statements
+logger.info("Starting the application...")
+
+
+
+
 
 
 def plot_quadmesh(variable_name, dataset, title=None):
@@ -130,12 +156,7 @@ def plot(var, ds, dimension=None, title=None, frequency=None, monotonic=None, fe
                       'widget_location': 'top'}
     if type(var) == list:
         var = var[0]
-        print('i am getting: ', var)
-    else:
-        # result = [key for key, value in mapping_var_names.items() if value == var]
-        print('i am getting: ', var)
-    print(mapping_var_names)
-    print(f'plotting var: {var}')
+    logger.info(f'plotting var: {var}')
     if not dimension:
         dimension = dimension_group.value
     if not title:
@@ -168,20 +189,26 @@ def plot(var, ds, dimension=None, title=None, frequency=None, monotonic=None, fe
         # removing 'y': ds[var], from the axis_arguments dictionary
         # to bypass the error described in the following github issue
         # https://github.com/holoviz/hvplot/issues/1325
-        axis_arguments = {'grid':True, 'x': dimension, 'title': title, 'responsive': True, 'widget_location': 'top'}
-        print(axis_arguments)
+        axis_arguments = {'grid':True, 
+                          'x': dimension, 
+                          'title': title, 
+                          'responsive': True, 
+                          'widget_location': 'top',
+                          'min_height': 600}
         if monotonic and frequency != "--":
-            print('data resampling requested')
             resampling_freq = {var_coord[0]: pandas_frequency_offsets[frequency]}
-            # .where(ds_raw != 9.96921e36)
-            plot_widget = ds[var].where(ds[var] != 9.96921e36).resample(**resampling_freq).mean().hvplot.line(**axis_arguments)
+            # .where(ds_raw != FILL_VALUE)
+            plot_widget = ds[var].where(ds[var] != FILL_VALUE).resample(**resampling_freq).mean().hvplot.line(**axis_arguments)
         else:
-            # .where(ds_raw != 9.96921e36)
-            plot_widget =  ds[var].where(ds[var] != 9.96921e36).hvplot.line(**axis_arguments)
+            # .where(ds_raw != FILL_VALUE)
+            plot_widget =  ds[var].where(ds[var] != FILL_VALUE).hvplot.line(**axis_arguments)
+        if len(list(plot_widget)) >= 2:
+            plot_widget[0].height = 90
+        logger.info(f"Plotting plot_widget with size: {len(list(plot_widget))} ,  with height {plot_widget[0].height} and width {plot_widget[0].width} ")
+        # plot_widget[0].width = 400
         return plot_widget
     if featureType != "timeseries":
         frequency_selector.visible = False
-        print('got this dimension: ', dimension.lower())
         if 'time' not in dimension.lower():
             if 'depth' in dimension.lower():
                 invert_yaxes=True
@@ -195,24 +222,21 @@ def plot(var, ds, dimension=None, title=None, frequency=None, monotonic=None, fe
             x = dimension
             # y = ds[var] 
             y = var
-        # axis_arguments = {'x': x, 'y': y, 'grid':True, 'title': title, 'widget_location': 'top', 'responsive': True}
         axis_arguments['x'] = x
         axis_arguments['y'] = y
-        print(axis_arguments)
-        # axis_arguments = {'x': ds[var], 'y': dimension, 'grid':True, 'title': title, 'widget_location': 'bottom', 'responsive': True}
         if ds[var].attrs.get('positive', '') == 'down':
             invert_yaxes = True
         if ds[dimension].attrs.get('positive', '') == 'down':
             invert_yaxes = True
         try:
-            plot_widget =  ds[var].where(ds[var] != 9.96921e36).hvplot.line(**axis_arguments)
+            plot_widget =  ds[var].where(ds[var] != FILL_VALUE).hvplot.line(**axis_arguments)
             if invert_yaxes:
                 plot_widget[-1].object.opts(invert_yaxis=True)
         except TypeError:
             print('TypeError')
             axis_arguments['y'] = dimension
             # axis_arguments = {'grid':True, 'y': dimension, 'title': title, 'widget_location': 'top', 'responsive': True}
-            plot_widget =  ds[var].where(ds[var] != 9.96921e36).hvplot.line(**axis_arguments)
+            plot_widget =  ds[var].where(ds[var] != FILL_VALUE).hvplot.line(**axis_arguments)
             if invert_yaxes:
                 plot_widget[-1].object.opts(invert_yaxis=True)
         except ValueError:
@@ -224,14 +248,10 @@ def plot(var, ds, dimension=None, title=None, frequency=None, monotonic=None, fe
             axis_arguments['x'] = x
             axis_arguments['y'] = y
             # axis_arguments = {'x': x, 'y': y, 'grid':True, 'title': title, 'widget_location': 'top', 'responsive': True}
-            plot_widget =  ds[var].where(ds[var] != 9.96921e36).hvplot.line(**axis_arguments)
+            plot_widget =  ds[var].where(ds[var] != FILL_VALUE).hvplot.line(**axis_arguments)
             if invert_yaxes:
                 plot_widget[-1].object.opts(invert_yaxis=True)
-        # axis_arguments['responsive'] = False
-        # axis_arguments['widget_location'] = "bottom"
-        print('axis_arguments:', axis_arguments)
-        print('invert_yaxes:', invert_yaxes)
-        # set the height of the plot widget (slider to tune the dimension value) to 60 
+        # set the height of the slider widget to 60
         plot_widget[0].height = 60
         return plot_widget        
 
@@ -242,9 +262,30 @@ def on_var_select(event):
     # need to check
     var = event.obj.value
     result = [key for key, value in mapping_var_names.items() if value == var]
-    dimension_group.options = list(ds[result].indexes)
+    # dimension_group.options = list(ds[result].indexes)
+    # reorder the dimension options to put the time dimension first if it exists,
+    # perform the chack based on the values types rather than the dimension name 
+    # to avoid issues with different naming conventions (e.g. time vs Time vs TIME)
+    # dimension_group.options = ds[result].indexes
+    # reorder the dimension options to put the time dimension first if it exists:
+    for name in ds[result].indexes:
+        # 1. Check for standard numpy/pandas datetime or timedelta
+        is_time = ds[result].indexes[name].dtype.kind in 'Mm'
+        # 2. Check for xarray's custom CFTimeIndex (for non-standard calendars)
+        if isinstance(ds[result].indexes[name], xr.CFTimeIndex):
+            is_time = True
+        if is_time:
+            print(f"'{name}' is a time-related index.")
+            # Move the time dimension to the beginning of the list
+            dimension_group.options = [name] + [opt for opt in dimension_group.options if opt != name]  
+        else:
+            print(f"'{name}' is NOT a time-related index.")
+    dimension_group.value = dimension_group.options[0]  # reset the dimension selection to the first option        
+        
+        
+
     if len(ds[result].indexes) >= 2 and featureType == 'timeseriesprofile':
-        print('activating quadmesh')
+        logger.info('activating quadmesh')
         #quadmesh_plot.visible = True
         if quadmesh_checkbox:
             quadmesh_checkbox.visible = True
@@ -255,12 +296,9 @@ def on_var_select(event):
             quadmesh_checkbox.visible = False
         #quadmesh_plot.visible = False
     with pn.param.set_values(main_app, loading=True):
-        # print(dir(plot_container[-1]))
-        # print(plot_container[-1][1].object.range(dimension_group.value))
         plot_container[-2] = plot(var=result, ds=ds, dimension=dimension_group.value, frequency=frequency_selector.value, title=var, monotonic=monotonic, featureType=featureType)
-        print(f'selected {result}')
-        # print(dir(plot_container[-1][1].object))
-        
+        logger.info(f'selected variable: {result}')
+
         if quadmesh_checkbox:
             if quadmesh_checkbox.value:
                 if len(quadmesh_plot) >= 1:
@@ -290,7 +328,7 @@ def on_frequency_select(event):
     result = [key for key, value in mapping_var_names.items() if value == var]
     with pn.param.set_values(main_app, loading=True):
         plot_container[-2] = plot(var=result, ds=ds, title=var, dimension=dimension_group.value, frequency=frequency, monotonic=monotonic, featureType=featureType)
-        print(f'selected {result} \n with frequency {frequency}') 
+        logger.info(f'selected variable: {result}, frequency: {frequency}')
 
 
 def on_quadmesh_select(event):
@@ -327,17 +365,13 @@ def export_selection(event):
     select_output_format_mapping = {'NetCDF':'nc', 'CSV':'csv', 'Parquet':'pq'}
     with pn.param.set_values(main_app, loading=True):
         export_format = select_output_format_mapping[select_output_format.value]
-        # export_format = select_output_format.value.lower()
-        if frequency_selector is not None and frequency_selector.visible and frequency_selector.value != 'Raw':
-            resampler = False
-            resampler_frequency = 'raw '
+        fs_active = frequency_selector is not None and frequency_selector.visible
+        if fs_active and frequency_selector.value not in ("--", "Raw"):
+            resampler = True
+            resampler_frequency = frequency_selector.value
         else:
-            if frequency_selector is not None and frequency_selector.visible and frequency_selector.value != "--":
-                resampler = True
-                resampler_frequency = frequency_selector.value
-            else:
-                resampler = False
-                resampler_frequency = 'raw'
+            resampler = False
+            resampler_frequency = 'raw'
         if not frequency_selector or not frequency_selector.visible or frequency_selector.value == "--":
             time_range = []
         else:
@@ -346,23 +380,6 @@ def export_selection(event):
         selected_variables = [i.name for i in wbx if i.value == True]
         # event_log.text = f"{str(selected_variables)} <br> {time_range} <br> {export_format} <br> {resampler}"
         
-        data = {
-            "url": "https://thredds.met.no/thredds/dodsC/alertness/YOPP_supersite/obs/utqiagvik/utqiagvik_obs_timeSeriesProfileSonde_20180201_20180331.nc",
-            "variables": [
-                "ta",
-                "hur",
-                "wdir_refmt"
-                ],
-            "decoded_time": decoded_time,
-            "time_range": [
-                "2018-07-01T00:00:00.000000000",
-                "2018-09-30T23:59:00.000000000"
-                ],
-            "is_resampled": resampler,
-            "resampling_frequency": "raw",
-            "output_format": "nc"
-            }
-
         export_dataspec = {
             "url": str(url),
             "variables": selected_variables,
@@ -403,7 +420,7 @@ pn.state.on_session_destroyed(callback=on_session_destroyed)
 templates = Jinja2Templates(directory="/app/templates")
 
 if 'url' not in pn.state.session_args:
-    javascript = Javascript()
+    redirector = Redirector()
     # add a list of example urls below the input box
     Resources = {
         "Time Series 1": "https://thredds.met.no/thredds/dodsC/arcticdata/infranor/UiO-Kongsvegen-AWS/UiO-Kongsvegen-AWS-sw200-agg.ncml",
@@ -461,8 +478,8 @@ if 'url' not in pn.state.session_args:
         print("------------------------- LOADING ++++++++++++++++++++++++++++++++++++")
         print("FeatureType detected:", featureType)
 
-        code = f"window.location.href='/{feature_type_mapping.get(featureType, 'TSP')}?url={url}'"
-        javascript.eval(code)
+        target = f"/{feature_type_mapping.get(featureType, 'TSP')}?url={url}"
+        redirector.redirect(target)
     
     
     # @pn.depends(menu_button.param.clicked, watch=True)
@@ -471,12 +488,11 @@ if 'url' not in pn.state.session_args:
     #     javascript.eval(code)
 
     pn.Column(
-        # menu_button,
-        javascript,
+        redirector,
         url_input,
         url_button,
         resources_table,
-        add_button, sizing_mode='stretch_height',
+        add_button, sizing_mode='stretch_height'
     ).servable()
 else:
     url = pn.state.session_args.get('url')[0].decode("utf8")
@@ -490,6 +506,7 @@ else:
         error_log = Div(text=f"""<br><b>Invalid URL:</b><br>   {url}  <br><br> Please provide a valid OPeNDAP URL.""")
         bokeh_pane = pn.pane.Bokeh(
                 column(error_log),
+                loading_indicator = True
             ).servable()
     else:
         print("++++++++++++++++++++++++ LOADING ++++++++++++++++++++++++++++++++++++")
@@ -515,23 +532,9 @@ else:
             print(newhtml)
             bokeh_pane = pn.pane.Bokeh(
                 column(raw_data, error_log_button, error_log),
+                loading_indicator = True
             ).servable()
             
-    # if ds:
-    #     # if 'featureType' in ds.attrs:
-    #     #     featureType = ds.attrs['featureType'].lower()
-    #     # elif 'cdm_data_type' in ds[var].attrs:
-    #     #     featureType = ds[var].attrs['cdm_data_type'].lower()
-    #     # else:
-    #     #     featureType = None
-    #     if featureType == 'timeseries':
-    #         var_coord = [i for i in ds.coords if ds.coords.dtypes[i] == np.dtype('<M8[ns]')]
-    #         time_coord = True
-    #     else:
-    #         time_coord = False
-    #         var_coord = list(ds.coords)
-            
-
 
 
     frequency_selector = pn.widgets.Select(options=[
@@ -550,12 +553,28 @@ else:
         
     if ds:
         # find plottable variables
-        plottable_vars = [j for j in ds if len([value for value in list(ds[j].coords) if value in list(ds.dims)]) >= 1]
-        # plottable_vars = [i for i in plottable_vars if len(ds[i].dims) == len(ds.indexes)]
-        plottable_vars = [i for i in plottable_vars if safe_check(i)]
+        if featureType == 'timeseries':
+            plottable_vars = [j for j in ds if len([value for value in list(ds[j].coords) if value in list(ds.dims)]) >= 1]
+            plottable_vars = [i for i in plottable_vars if len(ds[i].dims) == len(ds.indexes)]
+            plottable_vars = [i for i in plottable_vars if safe_check(i)]
+        if featureType == 'profile':
+            plottable_vars = [j for j in ds if len([value for value in list(ds[j].coords) if value in list(ds.dims)]) >= 1]
+            # plottable_vars = [i for i in plottable_vars if len(ds[i].dims) == len(ds.indexes)]
+            plottable_vars = [i for i in plottable_vars if safe_check(i)]
+        if featureType == 'trajectory':
+            plottable_vars = [j for j in ds if len([value for value in list(ds[j].coords) if value in list(ds.dims)]) >= 1]
+            # plottable_vars = [i for i in plottable_vars if len(ds[i].dims) == len(ds.indexes)]
+            plottable_vars = [i for i in plottable_vars if safe_check(i)]
+        if featureType == 'timeseriesprofile':
+            plottable_vars = [j for j in ds if len([value for value in list(ds[j].coords) if value in list(ds.dims)]) >= 1]
+            # plottable_vars = [i for i in plottable_vars if len(ds[i].dims) == len(ds.indexes)]
+            plottable_vars = [i for i in plottable_vars if safe_check(i)]
+        
+
         # build a dictionary of variables and their long names
         print("plottable_vars:", plottable_vars )
         mapping_var_names = {}
+        logger.info(f"Identified plottable variables: {plottable_vars}")
         for i in plottable_vars:
             if int(len(list(ds[i].coords)) != 0):
                 try:
@@ -569,6 +588,20 @@ else:
 
         result = [key for key, value in mapping_var_names.items() if value == variables_selector.value]
         dimension_group = pn.widgets.RadioBoxGroup(name='Dimension', options=list(ds[result].indexes), inline=False)
+        for name in ds[result].indexes:
+            # 1. Check for standard numpy/pandas datetime or timedelta
+            is_time = ds[result].indexes[name].dtype.kind in 'Mm'
+            # 2. Check for xarray's custom CFTimeIndex (for non-standard calendars)
+            if isinstance(ds[result].indexes[name], xr.CFTimeIndex):
+                is_time = True
+            if is_time:
+                print(f"'{name}' is a time-related index.")
+                # Move the time dimension to the beginning of the list
+                dimension_group.options = [name] + [opt for opt in dimension_group.options if opt != name]  
+            else:
+                print(f"'{name}' is NOT a time-related index.")
+        dimension_group.value = dimension_group.options[0]  # set the default value to the first option 
+            
         if featureType == 'timeseriesprofile':
             quadmesh_checkbox = pn.widgets.Checkbox(name='Quadmesh', value=False)
             quadmesh_checkbox.param.watch(on_quadmesh_select, parameter_names=['value'])  
@@ -589,7 +622,6 @@ else:
         # download_header.visible = False
         # Metadata Widgets
         metadata_layout, metadata_button = build_metadata_widget(ds.attrs)
-        metadata_button.on_click(functools.partial(show_hide_widget, widget=metadata_layout))
         # downloader = pn.Column(download_header, wbx, date_time_range_slider, select_output_format, export_resampling, export_options_button, event_log, width=400, sizing_mode='fixed')
         downloader = pn.Row(Spacer(width=10), pn.Column(Spacer(height=120),
                                                         download_header, 
@@ -599,7 +631,8 @@ else:
                                                         export_resampling, 
                                                         export_options_button, 
                                                         event_log, width=400, sizing_mode='fixed'))
-        export_button.on_click(functools.partial(show_hide_widget, widget=downloader))
+        metadata_button.on_click(functools.partial(show_hide_widget, widget=metadata_layout, hide=downloader))
+        export_button.on_click(functools.partial(show_hide_widget, widget=downloader, hide=metadata_layout))
         downloader.visible = False
 
         variables_selector.param.watch(on_var_select, parameter_names=['value'])
@@ -608,7 +641,7 @@ else:
         #    quadmesh_checkbox.param.watch(on_quadmesh_select, parameter_names=['value'])
         selected_var = [key for key, value in mapping_var_names.items() if value == variables_selector.value]
         dimension = dimension_group.value
-
+        logger.info(f"Initial variable selected: {selected_var}, with dimension: {dimension}")
         buttons = pn.Column(export_button, metadata_button)
         plot_plot = plot(selected_var, ds, dimension, title=variables_selector.value, frequency=frequency_selector.value, monotonic=monotonic, featureType=featureType)
         # print(dir(plot_plot))
@@ -631,18 +664,6 @@ else:
                         downloader, 
                         metadata_layout, height_policy='max')
 
-        # tmpl.add_panel('A',  main_app)
-        # tmpl.servable()
 
-        ACCENT_BASE_COLOR = "#003366"
-        pn.extension(sizing_mode="stretch_both")
-        template = pn.template.BootstrapTemplate(
-            site=" ADC NC-CF Data Visualization ",
-            # site_url="https://www.northwestknowledge.net/adc/",
-            favicon="/assets/ADC_logo.png",
-            title="Time Series Profile Tool",
-            logo="/assets/ADC_logo.png",
-            header_background=ACCENT_BASE_COLOR,
-            # accent_base_color=ACCENT_BASE_COLOR,
-            main=[main_app],
-        ).servable()
+        main_app.servable()
+        

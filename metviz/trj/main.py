@@ -222,7 +222,7 @@ def makeplot(variable: str, idx) -> hv.Overlay:
     Returns a Holoviews overlay (curve + vertical line indicating the selected index).
     """
 
-    vline = hv.VLine(idx).opts(color="red", line_width=2.0, responsive=True)
+    vline = hv.VLine(idx).opts(color="red", line_width=2.0, responsive=True, min_height=400)
 
     # Determine axis labels from dataset attributes when available.
     # Prefer `long_name` and include `units` when present, e.g. "Temperature (K)".
@@ -282,6 +282,7 @@ def makeplot(variable: str, idx) -> hv.Overlay:
         xlabel=xlabel,
         ylabel=ylabel,
         tools=[hover],
+        min_height=400,
     )
 
     # Find nearest time index and move the map marker there
@@ -361,21 +362,14 @@ metadata_button.on_event("button_click", metadata_handler)
 pn.state.onload(on_load)
 
 
-# Compose the layout: widgets on top, then the plot and map together
-layout = pn.Column(
-    pn.Row(
-        var_select,
-        datetime_slider,
-        throttle_checkbox,
-        index_value,
-        metadata_button,
-    ),
-    pn.Row(
-        pn.Column(dmap, m, sizing_mode="scale_both"),
-        metadata_layout,
-        sizing_mode="scale_both",
-    ),
-)
+layout = pn.Row(pn.GridBox(
+   pn.Row(var_select, datetime_slider, throttle_checkbox, index_value, metadata_button), 
+   pn.Row(dmap, m),
+   ncols=1, nrows=2
+), metadata_layout)
+
+m.layout.width = '100%'
+m.layout.overflow = 'hidden'
 
 # Make the layout servable in a Panel server or notebook
 layout.servable()
