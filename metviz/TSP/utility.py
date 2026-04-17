@@ -128,17 +128,44 @@ pandas_frequency_offsets = {
 # ---------------------------------------------------------------------------
 
 # Names that identify coordinate / axis variables — not useful as plotted data.
+# Used by is_plottable() to exclude these from the *variable* selector.
 # Checked against the lowercased variable name.
 _COORD_LIKE_NAMES = frozenset({
+    # Spatial coordinates
     'latitude', 'longitude', 'lat', 'lon',
-    'time', 'depth', 'z', 'altitude', 'alt', 'height',
+    'depth', 'z', 'altitude', 'alt', 'height',
     'pressure', 'pres', 'lev', 'level',
+    # Temporal
+    'time',
+    # DSG structural dimensions
     'station', 'profile', 'trajectory', 'obs',
-    'row_size', 'rowsize', 'rowSize',
+    'row_size', 'rowsize',
+    # Per-station / per-profile metadata scalars (not per-observation measurements)
+    'bottomdepth', 'bottom_depth',
+    'rowsize',
 })
 
-# Variable-name suffixes that indicate QC / flag / error variables.
-_QC_SUFFIXES = ('_qc', '_flag', 'flag', 'qc', 'woce', '_err', '_error', '_status')
+# Variable-name suffixes that indicate identifiers, metadata, or QC variables —
+# excluded from the *variable* selector.  Extend this tuple as needed.
+_EXCLUDE_SUFFIXES = (
+    # QC / flags
+    '_qc', '_flag', 'flag', 'qc', 'woce', '_err', '_error', '_status',
+    # Identifier / index columns
+    'idall', '_id', 'id',
+)
+
+# Names to exclude from the *dimension* selector even when they are legitimate
+# coordinate variables.  Extend this set to suppress unwanted axis options.
+# Checked against the lowercased variable name.
+# Rationale: latitude/longitude are spatial coordinates, but plotting data
+# vs. lat/lon is rarely the intended axis — users almost always want time,
+# depth, or pressure instead.
+AXIS_BLACKLIST: frozenset = frozenset({
+    'latitude', 'longitude', 'lat', 'lon',
+    'altitude', 'alt', 'height',
+    'station', 'profile', 'trajectory',
+    'row_size', 'rowsize',
+})
 
 
 def is_plottable(name: str, var) -> bool:
@@ -157,7 +184,7 @@ def is_plottable(name: str, var) -> bool:
     name_l = name.lower()
     if name_l in _COORD_LIKE_NAMES:
         return False
-    if any(name_l.endswith(s) for s in _QC_SUFFIXES):
+    if any(name_l.endswith(s) for s in _EXCLUDE_SUFFIXES):
         return False
     return True
 
@@ -216,14 +243,15 @@ def get_axis_candidates(ds, var_name: str) -> list:
 
     # 1. Named indexes (proper dimension coordinates)
     for idx_name in var.indexes:
-        if idx_name not in seen:
-            candidates.append(idx_name)
-            seen.add(idx_name)
+        if idx_name in seen or idx_name.lower() in AXIS_BLACKLIST:
+            continue
+        candidates.append(idx_name)
+        seen.add(idx_name)
 
     for dim in var.dims:
         # 2. Auxiliary coordinates sharing this dimension
         for name in ds.coords:
-            if name in seen or name == var_name:
+            if name in seen or name == var_name or name.lower() in AXIS_BLACKLIST:
                 continue
             coord = ds[name]
             if coord.ndim != 1 or coord.dims[0] != dim:
@@ -234,7 +262,7 @@ def get_axis_candidates(ds, var_name: str) -> list:
 
         # 3. Data variables with coordinate-like names sharing this dimension
         for name in ds.data_vars:
-            if name in seen or name == var_name:
+            if name in seen or name == var_name or name.lower() in AXIS_BLACKLIST:
                 continue
             if name.lower() not in _COORD_LIKE_NAMES:
                 continue
