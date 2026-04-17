@@ -225,51 +225,56 @@ def plot(var, ds, dimension=None, title=None, frequency=None, monotonic=None, fe
         return plot_widget
     if featureType != "timeseries":
         frequency_selector.visible = False
-        if 'time' not in dimension.lower():
-            if 'depth' in dimension.lower():
-                invert_yaxes=True
-            else:
-                invert_yaxes=False
-            y = dimension
-            # x = ds[var] 
-            x = var
-        else:
-            invert_yaxes=False
-            x = dimension
-            # y = ds[var] 
-            y = var
-        axis_arguments['x'] = x
-        axis_arguments['y'] = y
+
+        # Decide whether to invert the y-axis.
+        # Classic profile view: depth/pressure increases downward.
+        invert_yaxes = False
+        if any(kw in dimension.lower() for kw in ('depth', 'pressure', 'pres')):
+            invert_yaxes = True
+        # Honour the CF 'positive' attribute when the dimension is a real variable.
+        if dimension in ds:
+            if ds[dimension].attrs.get('positive', '') == 'down':
+                invert_yaxes = True
         if ds[var].attrs.get('positive', '') == 'down':
             invert_yaxes = True
-        if ds[dimension].attrs.get('positive', '') == 'down':
-            invert_yaxes = True
+
+        # Always put the selected dimension on the x-axis.
+        # hvplot uses the DataArray values as the y-axis automatically.
+        # Remove any stale 'y' key so it does not override hvplot's default.
+        axis_arguments['x'] = dimension
+        axis_arguments.pop('y', None)
+
+        # For DSG-style datasets (e.g. profile), the selected dimension may be
+        # a separate 1-D variable (depth, pressure) that shares the observation
+        # dimension with `var` but is NOT registered as a coordinate of `var`.
+        # In that case `ds[var].hvplot.line(x=dimension)` would raise a KeyError;
+        # use a Dataset-level call instead so both arrays are accessible.
+        dim_on_var = (
+            dimension in ds[var].dims or dimension in ds[var].coords
+        )
         try:
-            plot_widget =  ds[var].where(ds[var] != FILL_VALUE).hvplot.line(**axis_arguments)
-            if invert_yaxes:
-                plot_widget[-1].object.opts(invert_yaxis=True)
-        except TypeError:
-            print('TypeError')
-            axis_arguments['y'] = dimension
-            # axis_arguments = {'grid':True, 'y': dimension, 'title': title, 'widget_location': 'top', 'responsive': True}
-            plot_widget =  ds[var].where(ds[var] != FILL_VALUE).hvplot.line(**axis_arguments)
-            if invert_yaxes:
-                plot_widget[-1].object.opts(invert_yaxis=True)
-        except ValueError:
-            print('ValueError')
-            if 'time' not in dimension.lower():
-                x = var 
+            if dim_on_var:
+                plot_widget = ds[var].where(ds[var] != FILL_VALUE).hvplot.line(**axis_arguments)
             else:
-                y = var 
-            axis_arguments['x'] = x
-            axis_arguments['y'] = y
-            # axis_arguments = {'x': x, 'y': y, 'grid':True, 'title': title, 'widget_location': 'top', 'responsive': True}
-            plot_widget =  ds[var].where(ds[var] != FILL_VALUE).hvplot.line(**axis_arguments)
+                # Build a minimal sub-dataset containing only what hvplot needs.
+                ds_sub = ds[[v for v in (var, dimension) if v in ds.data_vars]]
+                plot_widget = ds_sub.hvplot.line(
+                    x=dimension, y=var,
+                    **{k: v for k, v in axis_arguments.items() if k != 'x'},
+                )
             if invert_yaxes:
                 plot_widget[-1].object.opts(invert_yaxis=True)
+        except Exception as exc:
+            logger.warning(
+                f"plot() failed (var={var!r}, dimension={dimension!r}): {exc} — "
+                "falling back to default axis"
+            )
+            axis_arguments.pop('x', None)
+            plot_widget = ds[var].where(ds[var] != FILL_VALUE).hvplot.line(**axis_arguments)
+
         # set the height of the slider widget to 60
         plot_widget[0].height = 60
-        return plot_widget        
+        return plot_widget
 
 
 # method to update the plot when a new variable is selected    
@@ -302,8 +307,8 @@ def on_dimension_select(event):
     dimension = event.obj.value
     with pn.param.set_values(main_app, loading=True):
         selected_var = [key for key, value in mapping_var_names.items() if value == variables_selector.value]
-        plot_container[-2] = plot(var=selected_var, ds=ds, dimension=dimension , title=variables_selector.value, frequency=frequency_selector.value, monotonic=monotonic, featureType=featureType)
-        print(f'selected {dimension}')
+        plot_container[-2] = plot(var=selected_var, ds=ds, dimension=dimension, title=variables_selector.value, frequency=frequency_selector.value, monotonic=monotonic, featureType=featureType)
+        logger.info(f'dimension selected: {dimension}')
         # print(dir(plot_container[-2]))
         # print(plot_container[-2].height, plot_container[-2].height_policy)
         # plot_container.height_policy='max'
