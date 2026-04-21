@@ -8,7 +8,7 @@
 
 - **xarray.Dataset**
   - The primary in-memory data structure for all ingested data.
-  - Used for both trajectory and general (grid/timeseries/profile) datasets.
+  - Used for all supported feature types: TimeSeries, TimeSeries Profile, Profile, and Trajectory datasets.
   - Data variables are filtered for plotting using rules (numeric, non-coordinate, not QC/flag).
 
 ---
@@ -20,8 +20,8 @@
   - `validate_opendap(url)`: Tries to open the dataset with xarray to ensure it is accessible and valid.
 
 - **Dataset Loading**
-  - For trajectory: `_open_dataset(url)` in `trj/main.py` loads the dataset and raises clear errors if it fails.
-  - For general workflow: `load_data(url)` (not shown in full, but referenced in TSP/main.py) loads and decodes datasets, returning the dataset and metadata.
+  - For Trajectory: `_open_dataset(url)` in `trj/main.py` loads the dataset and raises clear errors if it fails.
+  - For other workflows: `load_data(url)` (not shown in full, but referenced in TSP/main.py) loads and decodes datasets, returning the dataset and metadata.
 
 ---
 
@@ -36,12 +36,12 @@
 
 - **Widgets**
   - Built using Panel (`pn.widgets`): variable selectors, axis selectors, frequency selectors, export buttons, metadata display, etc.
-  - For trajectory: widgets for variable, time slider, and map location.
-  - For general: widgets for variable, axis, frequency, export, and metadata.
+  - For Trajectory: widgets for variable, time slider, and map location.
+  - For TimeSeries, TimeSeries Profile, and Profile: widgets for variable, axis, frequency, export, and metadata.
 
 - **Plotting**
   - Uses Holoviews, hvplot, and Bokeh for rendering.
-  - Handles special cases for timeseries, profiles, and grid data (e.g., quadmesh for 2D, line for 1D).
+  - Handles special cases for TimeSeries, TimeSeries Profile, and Profile data (e.g., quadmesh for 2D, line for 1D).
   - Trajectory workflow also renders a map using ipyleaflet.
 
 - **Export and Metadata**
@@ -56,7 +56,8 @@
   - Must be accessible via a valid HTTP/OPeNDAP URL.
   - Must be in a format readable by xarray (NetCDF, Zarr, etc.).
   - Should contain numeric variables with at least one dimension for plotting.
-  - For trajectory visualization: must have latitude, longitude, and time variables.
+  - For Trajectory visualization: must have latitude, longitude, and time variables.
+  - For TimeSeries, TimeSeries Profile, and Profile: must have appropriate coordinate and variable structure.
 
 - **Metadata**
   - Variables should have `long_name` and `units` attributes for labeling.
@@ -76,9 +77,11 @@ flowchart TD
     A(User Input: Data URL or File) --> B{Validate URL}
     B -- Valid --> C(Open Dataset: xarray)
     B -- Invalid --> Z(Error: Invalid URL)
-    C --> D{Dataset Type}
+    C --> D{Feature Type}
     D -- Trajectory --> E(Trajectory Workflow)
-    D -- Timeseries/Profile/Grid --> F(General Visualization Workflow)
+    D -- TimeSeries --> F(TimeSeries Workflow)
+    D -- TimeSeries Profile --> G(TimeSeries Profile Workflow)
+    D -- Profile --> H(Profile Workflow)
     E --> E1(Extract lat/lon/time/variables)
     E1 --> E2(Compute trajectory stats)
     E2 --> E3(Build widgets: variable select, time slider)
@@ -90,11 +93,25 @@ flowchart TD
     F3 --> F4(Render plot: hvplot/bokeh)
     F2 --> F5(Export/download data)
     F2 --> F6(Show metadata)
+    G --> G1(Identify plottable variables)
+    G1 --> G2(Build widgets: variable, axis, frequency, export)
+    G2 --> G3(User selects variable/dimension)
+    G3 --> G4(Render plot: hvplot/bokeh)
+    G2 --> G5(Export/download data)
+    G2 --> G6(Show metadata)
+    H --> H1(Identify plottable variables)
+    H1 --> H2(Build widgets: variable, axis, export)
+    H2 --> H3(User selects variable/dimension)
+    H3 --> H4(Render plot: hvplot/bokeh)
+    H2 --> H5(Export/download data)
+    H2 --> H6(Show metadata)
     style Z fill:#faa,stroke:#f00
     style A fill:#bbf,stroke:#00f
     style C fill:#bbf,stroke:#00f
     style E fill:#bfb,stroke:#080
     style F fill:#bfb,stroke:#080
+    style G fill:#bfb,stroke:#080
+    style H fill:#bfb,stroke:#080
 ```
 
 This document provides a comprehensive overview of the data model, ingestion, and visualization workflow for the Metviz application. For further details, refer to the codebase or request a specific class diagram or schema.
