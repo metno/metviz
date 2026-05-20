@@ -13,6 +13,8 @@ ignore = [
 ]
 
 [lint.per-file-ignores]
-# Panel apps are directory-served scripts: their setup runs at import time and
-# legitimately appends to sys.path before importing app-local modules.
+# Directory-served apps run setup at import time and legitimately bootstrap
+# sys.path before importing app-local / shared modules.
 "ncapp/app/main.py" = ["E402"]
+"metviz/TSP/main.py" = ["E402"]
+"metviz/trj/main.py" = ["E402"]

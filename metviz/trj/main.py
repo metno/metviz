@@ -5,6 +5,16 @@ variable and time index from a sample dataset and shows a plot together
 with the corresponding location on an ipyleaflet map.
 """
 
+import os
+import sys
+
+# The shared `common` package is mounted at /opt/metviz/common in the container.
+# Ensure its parent directory is importable regardless of how PYTHONPATH is set
+# (mirrors ncapp's sys.path bootstrap). Override with METVIZ_COMMON_ROOT if the
+# deployment mounts it elsewhere.
+_COMMON_ROOT = os.environ.get("METVIZ_COMMON_ROOT", "/opt/metviz")
+if _COMMON_ROOT not in sys.path:
+    sys.path.insert(0, _COMMON_ROOT)
 
 import holoviews as hv
 import numpy as np
