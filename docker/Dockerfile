@@ -12,8 +12,6 @@ RUN pip install -U localtileserver
 
 EXPOSE 7000
 
-COPY app /app
-
 COPY entrypoint.sh entrypoint.sh
 RUN chmod +x entrypoint.sh
 

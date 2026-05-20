@@ -14,7 +14,9 @@ services:
       PROCESSING_ENDPOINT: 'https://met.no'
       DOWNLOAD_ENDPOINT: 'https://met.no'
       PYTHONUNBUFFERED: 1
-      PYTHONPATH: '$${PYTHONPATH}:/app:/seaice:/seaicemod'
+      # /opt/metviz is the import root for the shared `common` package
+      # (mounted below at /opt/metviz/common).
+      PYTHONPATH: '$${PYTHONPATH}:/app:/seaice:/seaicemod:/opt/metviz'
       SEAICE_APP_ROOT: '/seaice'
       SEAICEMOD_APP_ROOT: '/seaicemod'
     # hostname: ncmet
@@ -28,6 +30,8 @@ services:
       # - ./metviz/mapdap:/mapdap
       # - ./metviz/tspt:/tspt
       - ./metviz/TSP:/TSP
+      # Shared helpers imported by both Panel apps as `from common... import ...`
+      - ./metviz/common:/opt/metviz/common
       - ./metviz/OGC_client:/OGC_client
       - ./metviz/assets:/assets
       - ./docker/entrypoint.sh:/entrypoint.sh
