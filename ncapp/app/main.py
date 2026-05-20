@@ -1,24 +1,31 @@
-import logging
-import sys
-sys.path.append('/app')
-import uvicorn
-from fastapi import FastAPI, HTTPException, Request, Query
-from fastapi.staticfiles import StaticFiles
-from fastapi.responses import FileResponse, HTMLResponse
-from starlette.middleware.cors import CORSMiddleware
+"""METAPI — a thin FastAPI front-end that embeds the metviz Panel apps.
+
+This service does not render plots itself. For a given OPeNDAP ``url`` it asks
+Bokeh for a ``server_document`` script tag pointing at the appropriate Panel
+backend (TSP or TRJ), and returns it either as raw HTML (for iframe/Drupal
+embedding) or wrapped in a page template.
+
+Backend URLs are supplied via environment variables with no defaults, so a
+misconfigured deployment fails loudly (HTTP 503) instead of silently routing to
+the wrong server.
+"""
 
 import os
-from fastapi.templating import Jinja2Templates
-from bokeh.embed import server_document
-from utility import URLStr, FeatureType, FeatureTypeEnum, guess_feature_type_from_data
-from pydantic import AnyHttpUrl
+import sys
 
-# Panel / Bokeh backend URLs — must be set via environment variables.
-# No defaults are provided so a misconfigured deployment fails loudly at
-# request time rather than silently routing to the wrong server.
+sys.path.append("/app")
+
+import uvicorn
+from bokeh.embed import server_document
+from fastapi import FastAPI, HTTPException, Query, Request
+from fastapi.responses import HTMLResponse
+from fastapi.templating import Jinja2Templates
+from pydantic import AnyHttpUrl
+from starlette.middleware.cors import CORSMiddleware
+from utility import FeatureType, FeatureTypeEnum, guess_feature_type_from_data
+
 PANEL_TSP_URL: str = os.environ.get("PANEL_TSP_URL", "")
 PANEL_TRJ_URL: str = os.environ.get("PANEL_TRJ_URL", "")
-BOKEH_URL: str = os.environ.get("BOKEH_URL", "")
 
 app = FastAPI(
     title="METAPI",
@@ -27,123 +34,100 @@ app = FastAPI(
 )
 templates = Jinja2Templates(directory="templates")
 
-
-
-
+# Public embedding API: allow any origin. Credentials are intentionally
+# disabled — a wildcard origin with credentials is rejected by browsers and is
+# not needed here (the embed script connects to the Panel server directly).
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
-    allow_credentials=True,
+    allow_credentials=False,
     allow_methods=["*"],
     allow_headers=["*"],
 )
 
 
-
-# take a url parameter as input
-@app.get("/TSP")
-async def tsp(url: str, render: bool, request: Request):
-    if not PANEL_TSP_URL:
-        raise HTTPException(status_code=503, detail="PANEL_TSP_URL environment variable is not set")
-    script = server_document(url=PANEL_TSP_URL, arguments={"url": url})
-    # return as htmlresponse
-    if not render:
-        return HTMLResponse(content=script, status_code=200)
-    else:
-        # return as template response
-        return templates.TemplateResponse(
-            "index.html", 
-            {"request": request, "script": script}
-        )
-
-@app.get("/TRJ")
-async def trj(url: str, render: bool, request: Request):
-    if not PANEL_TRJ_URL:
-        raise HTTPException(status_code=503, detail="PANEL_TRJ_URL environment variable is not set")
-    script = server_document(url=PANEL_TRJ_URL, arguments={"url": url})
-    # return as htmlresponse
-    if not render:
-        return HTMLResponse(content=script, status_code=200)
-    else:
-        return templates.TemplateResponse(
-            "index.html", 
-            {"request": request, "script": script}
-        )
-    
-@app.get("/bokehapp")
-async def bokeh(url: str, render: bool, request: Request):
-    if not BOKEH_URL:
-        raise HTTPException(status_code=503, detail="BOKEH_URL environment variable is not set")
-    script = server_document(url=BOKEH_URL, arguments={"url": url})
-    # return as htmlresponse
-    if not render:
-        return HTMLResponse(content=script, status_code=200)
-    else:
-        return templates.TemplateResponse(
-            "index.html", 
-            {"request": request, "script": script}
-        )
-    
-@app.get("/bokehplot")
-async def bokehplot(feature_type: FeatureTypeEnum, request: Request, render: bool = False, url: AnyHttpUrl = Query(..., description="Enter a valid OPeNDAP url")):
-
-    if feature_type in ['timeSeries', 'timeSeriesProfile', 'profile']:
-        panel_url = PANEL_TSP_URL
-    elif feature_type == 'trajectory':
-        panel_url = PANEL_TRJ_URL
-    else:
-        return HTMLResponse(content=f"Plotting not implemented yet for featureType: {feature_type}", status_code=422)
-    if not panel_url:
-        raise HTTPException(status_code=503, detail=f"Panel URL environment variable is not set for featureType: {feature_type}")
-    script = server_document(url=panel_url, arguments={"url": url})
-    # return as htmlresponse
-    if not render:
-        return HTMLResponse(content=script, status_code=200)
-    else:
-        return templates.TemplateResponse(
-            "index.html",
-            {"request": request, "script": script}
-        )
-
-    
-@app.get("/getFeatureType")
-async def getFeatureType(url: AnyHttpUrl = Query(..., description="Enter a valid OPeNDAP url")):
-    try:
-        feature_type = guess_feature_type_from_data(url)
-        return {"feature_type": feature_type} 
-    except ValueError as e:
-        return HTMLResponse(status_code=423, content=str(e))
-
-    
-@app.get("/metviz")
-async def metviz(url: str, render: bool, feature_type: str, guess_featuretype: bool, request: Request):
-    # This generates the script tag that tells the browser 
-    # to connect to the Panel server
-    # validate feature_type using pydantic model
-    # perform the validation only if guess_featuretype is False, otherwise ignore the feature_type parameter and guess it from the data
-    if not guess_featuretype:
-        try:
-            feature_type = FeatureType(value=feature_type)
-        except ValueError as e:
-            raise HTTPException(status_code=400, detail=str(e))
-    else:
-        feature_type = None
-    if feature_type and feature_type.value == 'trajectory':
-        panel_url = PANEL_TRJ_URL
-    else:
-        panel_url = PANEL_TSP_URL
+def _embed_response(panel_url: str, url: str, render: bool, request: Request):
+    """Return the embed script for *panel_url*, raw or wrapped in the template."""
     if not panel_url:
         raise HTTPException(status_code=503, detail="Panel URL environment variable is not set")
     script = server_document(url=panel_url, arguments={"url": url})
-    # return as htmlresponse
     if not render:
         return HTMLResponse(content=script, status_code=200)
+    return templates.TemplateResponse("index.html", {"request": request, "script": script})
+
+
+@app.get("/TSP")
+async def tsp(url: str, request: Request, render: bool = False):
+    """Embed the TSP (timeSeries / profile / timeSeriesProfile) Panel app."""
+    return _embed_response(PANEL_TSP_URL, url, render, request)
+
+
+@app.get("/TRJ")
+async def trj(url: str, request: Request, render: bool = False):
+    """Embed the trajectory Panel app."""
+    return _embed_response(PANEL_TRJ_URL, url, render, request)
+
+
+@app.get("/bokehplot")
+async def bokehplot(
+    feature_type: FeatureTypeEnum,
+    request: Request,
+    render: bool = False,
+    url: AnyHttpUrl = Query(..., description="Enter a valid OPeNDAP url"),
+):
+    """Embed the Panel app matching an explicitly-supplied featureType."""
+    if feature_type in (
+        FeatureTypeEnum.TIMESERIES,
+        FeatureTypeEnum.TIMESERIESPROFILE,
+        FeatureTypeEnum.PROFILE,
+    ):
+        panel_url = PANEL_TSP_URL
+    elif feature_type == FeatureTypeEnum.TRAJECTORY:
+        panel_url = PANEL_TRJ_URL
     else:
-        return templates.TemplateResponse(
-            "index.html",
-            {"request": request, "script": script}
-        )    
-    
-    
+        return HTMLResponse(
+            content=f"Plotting not implemented yet for featureType: {feature_type}",
+            status_code=422,
+        )
+    return _embed_response(panel_url, str(url), render, request)
+
+
+@app.get("/getFeatureType")
+async def get_feature_type(url: AnyHttpUrl = Query(..., description="Enter a valid OPeNDAP url")):
+    """Return the CF ``featureType`` advertised by the dataset at *url*."""
+    try:
+        return {"feature_type": guess_feature_type_from_data(url)}
+    except ValueError as exc:
+        return HTMLResponse(status_code=423, content=str(exc))
+
+
+@app.get("/metviz")
+async def metviz(
+    url: str,
+    request: Request,
+    feature_type: str,
+    guess_featuretype: bool,
+    render: bool = False,
+):
+    """Embed a Panel app, optionally guessing the featureType from the data.
+
+    When ``guess_featuretype`` is false, ``feature_type`` is validated against
+    the allowed set; trajectory data routes to the TRJ app, everything else to
+    the TSP app.
+    """
+    resolved_type = None
+    if not guess_featuretype:
+        try:
+            resolved_type = FeatureType(value=feature_type)
+        except ValueError as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+    if resolved_type is not None and resolved_type.value == FeatureTypeEnum.TRAJECTORY:
+        panel_url = PANEL_TRJ_URL
+    else:
+        panel_url = PANEL_TSP_URL
+    return _embed_response(panel_url, url, render, request)
+
+
 if __name__ == "__main__":
-    uvicorn.run(app, port=8000, host="0.0.0.0", reload=True, debug=True)
+    uvicorn.run("main:app", host="0.0.0.0", port=8000, reload=True)
