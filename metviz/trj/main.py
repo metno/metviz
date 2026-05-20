@@ -5,18 +5,16 @@ variable and time index from a sample dataset and shows a plot together
 with the corresponding location on an ipyleaflet map.
 """
 
-from typing import Tuple
 
 import holoviews as hv
+import numpy as np
 import panel as pn
 import xarray as xr
-from ipywidgets import HTML
-from ipyleaflet import Map, Marker, Polyline, WMSLayer
-from bokeh.models import HoverTool, Div, Button
-import numpy as np
+from bokeh.models import HoverTool
+from common.widgets import build_metadata_widget
 from geographiclib.geodesic import Geodesic
-
-from utility import dict_to_html_ul, build_metadata_widget
+from ipyleaflet import Map, Marker, Polyline, WMSLayer
+from ipywidgets import HTML
 
 pn.extension("ipywidgets", sizing_mode="stretch_width")
 hv.extension("bokeh")
@@ -28,8 +26,6 @@ RESOURCES = {
     "c": "https://thredds.niva.no/thredds/dodsC/datasets/norsoop/color_fantasy/merged_acdd_color_fantasy.nc",
     "d": "https://thredds.niva.no/thredds/dodsC/datasets/nrt/color_fantasy.nc",
 }
-
-# code starts growing, probably better to add an utils.py file
 
 
 def compute_trajectory_duration(ds, time_dim="time"):
@@ -87,7 +83,7 @@ def _open_dataset(url: str) -> xr.Dataset:
     try:
         return xr.open_dataset(url)
     except Exception as exc:
-        raise RuntimeError(f"Failed to open dataset {url!r}: {exc}")
+        raise RuntimeError(f"Failed to open dataset {url!r}: {exc}") from exc
 
 
 # Load an example dataset (small dataset chosen for faster interactivity).
@@ -167,7 +163,7 @@ gebco_polar_stereo_north_wms = WMSLayer(
 # Build a simple line connecting all lat/lon points in the dataset for context.
 locations = [
     [float(lat), float(lon)]
-    for lat, lon in zip(ds.latitude.values, ds.longitude.values)
+    for lat, lon in zip(ds.latitude.values, ds.longitude.values, strict=False)
 ]
 line = Polyline(locations=locations, color="green", fill=False)
 
@@ -176,10 +172,6 @@ total_length_m = calculate_total_geodetic_length(locations)
 total_duration_s = compute_trajectory_duration(ds)
 duration_hours = total_duration_s / 3600.0
 duration_days = duration_hours / 24.0
-
-
-# print(f"Total trajectory length: {total_length_m/1000:.2f} km")
-# print(f"Total trajectory duration: {duration_hours:.2f} hours")
 
 line_popup_content = HTML(
     f"""<b>Total trajectory length:</b> <br>{total_length_m / 1000:.2f} km<br><b>Total trajectory duration:</b> <br>{duration_hours:.2f} hours ({duration_days:.2f} days)."""
@@ -291,7 +283,7 @@ def makeplot(variable: str, idx) -> hv.Overlay:
 
     center_lat = float(ds["latitude"].isel(time=pos).values)
     center_lon = float(ds["longitude"].isel(time=pos).values)
-    center: Tuple[float, float] = (center_lat, center_lon)
+    center: tuple[float, float] = (center_lat, center_lon)
 
     # Update the text input with the current center
     index_value.value = f"{center}"
@@ -363,7 +355,7 @@ pn.state.onload(on_load)
 
 
 layout = pn.Row(pn.GridBox(
-   pn.Row(var_select, datetime_slider, throttle_checkbox, index_value, metadata_button), 
+   pn.Row(var_select, datetime_slider, throttle_checkbox, index_value, metadata_button),
    pn.Row(dmap, m),
    ncols=1, nrows=2
 ), metadata_layout)
