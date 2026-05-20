@@ -1,0 +1,14 @@
+# Test/dev dependencies for running the smoke + unit tests in a local venv.
+# Install into a gitignored venv:  python3 -m venv .venv && .venv/bin/pip install -r requirements-test.txt
+pytest
+numpy
+pandas
+xarray
+pydantic
+requests
+itsdangerous
+# Viz stack — needed to import the panel/holoviews-dependent modules under test.
+panel
+hvplot
+holoviews
+bokeh

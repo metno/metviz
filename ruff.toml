@@ -1,0 +1,18 @@
+# Ruff configuration for the metviz Python sources.
+# Run from the repo root:  ruff check .
+target-version = "py312"
+line-length = 120
+
+[lint]
+select = ["E", "F", "W", "I", "UP", "B"]
+ignore = [
+    # Long OPeNDAP URLs and inline HTML snippets are clearer left unwrapped.
+    "E501",
+    # FastAPI uses `Query(...)` / `Depends(...)` as argument defaults by design.
+    "B008",
+]
+
+[lint.per-file-ignores]
+# Panel apps are directory-served scripts: their setup runs at import time and
+# legitimately appends to sys.path before importing app-local modules.
+"ncapp/app/main.py" = ["E402"]
