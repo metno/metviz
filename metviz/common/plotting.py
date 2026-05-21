@@ -97,12 +97,15 @@ def plot(
         return plot_widget
 
     # --- profile / timeSeriesProfile ---------------------------------------
+    # min_height mirrors the timeseries branch: a responsive plot needs a height
+    # floor or it collapses when its container can't supply a definite height.
     axis_arguments = {
         "grid": True,
         "x": dimension,
         "title": title,
         "responsive": True,
         "widget_location": "top",
+        "min_height": 400,
     }
 
     invert = _should_invert_yaxis(ds, var, dimension) or invert_yaxis

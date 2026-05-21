@@ -19,17 +19,17 @@ from .variables import get_axis_candidates, get_plottable_vars, sort_axis_candid
 class DatasetPlotPanel:
     """Variable/axis selectors + a plot area for a single xarray Dataset."""
 
-    def __init__(self, *, min_height: int = 300, controls_width: int = 240):
-        self.variable_select = pn.widgets.Select(name="Variable", options=[], visible=False, sizing_mode="stretch_width")
-        self.dimension_select = pn.widgets.Select(name="Axis", options=[], visible=False, sizing_mode="stretch_width")
+    def __init__(self, *, min_height: int = 300):
+        self.variable_select = pn.widgets.Select(name="Variable", options=[], visible=False, width=340)
+        self.dimension_select = pn.widgets.Select(name="Axis", options=[], visible=False, width=200)
         self._message = pn.pane.Markdown("Select a record to plot.", sizing_mode="stretch_width")
-        # Lay the controls and plot side by side (horizontal): the controls take a
-        # fixed-width left column and the plot area gets the card's full height,
-        # so a responsive Bokeh plot inherits a definite height instead of
-        # collapsing while competing for vertical space with the widgets.
-        self._controls = pn.Column(self.variable_select, self.dimension_select, width=controls_width)
+        # Vertical layout: a fixed-height controls row above a stretch_both plot
+        # area. The plot area inherits a definite height from the (definite-height)
+        # grid card; the plot widget itself is forced to stretch_both in _replot
+        # so that height propagates into the hvplot layout and the plot fills it.
+        self._controls = pn.Row(self.variable_select, self.dimension_select, sizing_mode="stretch_width")
         self._plot_area = pn.Column(self._message, sizing_mode="stretch_both", min_height=min_height)
-        self.layout = pn.Row(
+        self.layout = pn.Column(
             self._controls,
             self._plot_area,
             sizing_mode="stretch_both",
@@ -140,6 +140,13 @@ class DatasetPlotPanel:
                     monotonic=self._monotonic,
                     featureType=self._feature_type,
                 )
+                # Force the hvplot result to stretch so the card's definite
+                # height propagates into it (timeSeriesProfile returns a nested
+                # [slider, plot] Column that otherwise won't fill).
+                try:
+                    widget.sizing_mode = "stretch_both"
+                except Exception:
+                    pass
                 self._plot_area[:] = [widget]
             except Exception as exc:
                 self._message.object = f"Could not plot **{var}**: {exc}"
