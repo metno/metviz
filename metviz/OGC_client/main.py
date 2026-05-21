@@ -64,7 +64,7 @@ from ipyleaflet import WMSLayer, projections
 
 # --- WMS GetCapabilities UI ---
 
-wms_toggle = pn.widgets.Toggle(name="Show WMS Loader", button_type="primary", value=False)
+wms_toggle = pn.widgets.Toggle(name="Show WMS Loader", button_type="primary", value=False, visible=False)
 
 wms_url_input = pn.widgets.TextInput(name="WMS GetCapabilities URL", placeholder="Enter WMS URL")
 wms_ok_button = pn.widgets.Button(name="Load WMS Capabilities", button_type="success")
@@ -180,7 +180,7 @@ wms_toggle.param.watch(toggle_wms_dialog, 'value')
 
 # CSW Query and Draw Handling (from main.py)
 
-csw_toggle = pn.widgets.Toggle(name="Show CSW Loader", button_type="primary", value=False)
+csw_toggle = pn.widgets.Toggle(name="Show CSW Loader", button_type="primary", value=False, visible=False)
 
 csw_url_input = pn.widgets.TextInput(name="CSW edpoint URL", placeholder="Enter CSW URL")
 csw_url_reset_button = pn.widgets.Button(name="Reset CSW URL", button_type="warning", width=120)
@@ -350,7 +350,7 @@ csw_dialog = pn.Column(
     csw_results_table,
     pn.Row(csw_prev_button, csw_page_label, csw_next_button),
     pn.Row(csw_flyto_button, csw_visualize_link),
-    visible=False,
+    visible=True,
     margin=(10, 10),
     sizing_mode="stretch_width",
     styles=dict(background='WhiteSmoke'),
@@ -1058,7 +1058,7 @@ def add_selected_wms_layers_and_update(event):
     add_selected_wms_layers(event)
     update_layer_manager()
 
-layer_manager_toggle = pn.widgets.Toggle(name="Show Layer Manager", button_type="primary", value=False)
+layer_manager_toggle = pn.widgets.Toggle(name="Show Layer Manager", button_type="primary", value=False, visible=False)
 
 
 layer_manager_widget = pn.Column(pn.pane.Markdown("### Layers"), layer_manager, visible=False, sizing_mode="stretch_both", max_width=300)
@@ -1098,7 +1098,9 @@ toolbar.visible = False
 side_opt = pn.Column(edit_panel,
           csw_dialog,
           wms_dialog)
-side_opt.visible = False
+# Show the side panel by default; the toggle buttons that used to control it are
+# hidden for now (only the CSW loader is wired up).
+side_opt.visible = True
 
 
 def show_hide_side_opt_widget(event):
@@ -1119,6 +1121,7 @@ show_options_button = Button(
         label="show opt",
         height=30,
         width=120,
+        visible=False,
 )
 show_options_button.on_click(show_hide_side_opt_widget)
 
