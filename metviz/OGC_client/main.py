@@ -131,34 +131,6 @@ def load_wms_layers(event):
 
 wms_ok_button.on_click(load_wms_layers)
 
-def add_selected_wms_layers(event):
-    """Add the user-selected WMS layers to the map.
-
-    Reads the selected layer names from `wms_layers_selector` and creates
-    an `ipyleaflet.WMSLayer` for each selected layer. The created layers are
-    added to the global `lmap` object.
-
-    Args:
-        event: Panel click event (ignored; present to wire up as a callback).
-    """
-    url = wms_url_input.value.strip()
-    selected_layers = wms_layers_selector.value
-    if not url or not selected_layers:
-        return
-    for layer_name in selected_layers:
-        layer_name = layer_name[1]  # Extract actual layer name
-        wms_layer = WMSLayer(
-            url=url,
-            layers=layer_name,
-            crs=projections.EPSG4326,
-            name=layer_name,
-            transparent=True,
-            format="image/png"
-        )
-        lmap.add_layer(wms_layer)
-
-wms_add_button.on_click(add_selected_wms_layers)
-
 wms_dialog = pn.Column(
     wms_url_input,
     wms_ok_button,
@@ -1095,7 +1067,6 @@ def add_selected_wms_layers(event):
     selected_layers = wms_layers_selector.value
     if not url or not selected_layers:
         return
-    "https://corsproxy.io/?" + url
     for layer_name in selected_layers:
         wms_layer = WMSLayer(
             url=url,
@@ -1188,15 +1159,6 @@ def add_marker_and_update(*args, **kwargs):
     operation would explicitly call this helper.
     """
     # on_map_click(*args, **kwargs)
-    update_layer_manager()
-
-def add_selected_wms_layers_and_update(event):
-    """Convenience wrapper: add selected WMS layers then refresh manager.
-
-    Provided so UI wiring can use a single handler that both adds layers and
-    updates the layer manager pane.
-    """
-    add_selected_wms_layers(event)
     update_layer_manager()
 
 layer_manager_toggle = pn.widgets.Toggle(name="Show Layer Manager", button_type="primary", value=False, visible=False)
