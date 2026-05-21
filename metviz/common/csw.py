@@ -44,10 +44,23 @@ class CswRecord:
     references: list = field(default_factory=list)
     subjects: list = field(default_factory=list)
     feature_type: str | None = None
+    bbox: tuple[float, float, float, float] | None = None  # (minx, miny, maxx, maxy)
 
     @property
     def opendap_url(self) -> str | None:
         return extract_opendap_url(self.references)
+
+    @property
+    def location(self) -> tuple[float, float] | None:
+        """Return ``(lat, lon)`` at the centre of the bbox, or ``None``.
+
+        For a station/point record the bbox min and max coincide, so this is
+        the station location.
+        """
+        if not self.bbox:
+            return None
+        minx, miny, maxx, maxy = self.bbox
+        return ((miny + maxy) / 2.0, (minx + maxx) / 2.0)
 
 
 def parse_bbox(text: str | None) -> list[float] | None:
@@ -137,12 +150,27 @@ def resolve_feature_type(record: CswRecord, *, probe: bool = True) -> str | None
     return None
 
 
+def _extract_bbox(raw):
+    """Pull a numeric ``(minx, miny, maxx, maxy)`` tuple from a record, or None."""
+    raw_bbox = getattr(raw, "bbox", None)
+    if raw_bbox is None:
+        return None
+    try:
+        return (
+            float(raw_bbox.minx), float(raw_bbox.miny),
+            float(raw_bbox.maxx), float(raw_bbox.maxy),
+        )
+    except (TypeError, ValueError, AttributeError):
+        return None
+
+
 def _to_record(raw) -> CswRecord:
     return CswRecord(
         identifier=getattr(raw, "identifier", "") or "",
         title=getattr(raw, "title", "") or "",
         references=list(getattr(raw, "references", []) or []),
         subjects=list(getattr(raw, "subjects", []) or []),
+        bbox=_extract_bbox(raw),
     )
 
 

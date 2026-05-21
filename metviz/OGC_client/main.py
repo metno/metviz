@@ -48,9 +48,8 @@ import panel as pn
 from bokeh.models import Button
 from common.browser_storage import BrowserStorage
 from common.csw import build_filter, collect_page, connect, parse_bbox
-from common.redirect import Redirector
 from common.routing import target_app_for
-from ipyleaflet import DrawControl, GeoJSON, LayersControl, Map, Marker
+from ipyleaflet import CircleMarker, DrawControl, GeoJSON, LayersControl, Map, Marker
 from ipywidgets import HTML
 
 pn.extension("ipywidgets", "tabulator", sizing_mode="stretch_width")
@@ -248,8 +247,6 @@ csw_output.visible = False
 csw_output.disabled = True
 
 # --- Search results -> visualize routing ---
-# Redirector navigates the browser to /TSP|/TRJ for the selected dataset.
-csw_redirector = Redirector()
 csw_results_table = pn.widgets.Tabulator(
     pd.DataFrame(columns=["title", "featureType", "url"]),
     name="Results",
@@ -260,7 +257,11 @@ csw_results_table = pn.widgets.Tabulator(
     height=260,
     sizing_mode="stretch_width",
 )
-csw_visualize_button = pn.widgets.Button(name="Visualize selected", button_type="primary", visible=False)
+# "Visualize selected" is a real <a target="_blank"> link (updated on selection)
+# so the new tab opens on a genuine user click and is not blocked as a popup.
+_VISUALIZE_PLACEHOLDER = '<span style="color:gray;">Select a record to visualize</span>'
+csw_visualize_link = pn.pane.HTML(_VISUALIZE_PLACEHOLDER, visible=False)
+csw_flyto_button = pn.widgets.Button(name="Fly to on map", disabled=True, visible=False, width=130)
 
 # Pagination: browse the CSW result set 10 at a time so we only probe a page's
 # worth of datasets for featureType, not the whole match set.
@@ -275,6 +276,12 @@ _csw_records: list = []
 _csw_state = {"csw": None, "filter": None, "matches": 0}
 _csw_pages: list = []
 _csw_index = -1
+
+# Map overlays for results: a pin per located record, plus a single highlight
+# for the selected one. CircleMarkers keep them out of the layer manager
+# (which only tracks Markers / WMSLayers).
+_csw_result_markers: list = []
+_csw_highlight = None
 
 # --- Remember the last CSW search inputs in the browser (localStorage) ---
 csw_storage = BrowserStorage(key="metviz_csw_search")
@@ -332,7 +339,6 @@ csw_storage.param.watch(_restore_csw_inputs, "value")
 
 
 csw_dialog = pn.Column(
-    csw_redirector,
     csw_storage,
     pn.Row(csw_url_input, csw_url_reset_button),
     pn.Row(csw_anytext_input, csw_anytext_reset_button),
@@ -343,7 +349,7 @@ csw_dialog = pn.Column(
     csw_output,
     csw_results_table,
     pn.Row(csw_prev_button, csw_page_label, csw_next_button),
-    csw_visualize_button,
+    pn.Row(csw_flyto_button, csw_visualize_link),
     visible=False,
     margin=(10, 10),
     sizing_mode="stretch_width",
@@ -362,20 +368,130 @@ def _selected_datetime_range():
     return None, None
 
 
+def _clear_result_markers():
+    """Remove all result pins and the highlight from the map."""
+    global _csw_highlight
+    for circle in _csw_result_markers:
+        try:
+            lmap.remove_layer(circle)
+        except Exception:
+            pass
+    _csw_result_markers.clear()
+    if _csw_highlight is not None:
+        try:
+            lmap.remove_layer(_csw_highlight)
+        except Exception:
+            pass
+        _csw_highlight = None
+
+
+def _add_result_markers(records):
+    """Drop a pin for each record that carries a location (bbox centre)."""
+    for record in records:
+        loc = record.location
+        if loc is None:
+            continue
+        circle = CircleMarker(
+            location=loc, radius=6, color="#1f77b4",
+            fill_color="#1f77b4", fill_opacity=0.7, weight=1,
+        )
+        try:
+            popup = HTML()
+            popup.value = f"<b>{record.title}</b><br/>{record.feature_type or ''}"
+            circle.popup = popup
+        except Exception:
+            pass
+        lmap.add_layer(circle)
+        _csw_result_markers.append(circle)
+
+
+def _reset_selection_ui():
+    """Reset the Visualize link / Fly-to button to their no-selection state."""
+    csw_visualize_link.object = _VISUALIZE_PLACEHOLDER
+    csw_flyto_button.disabled = True
+
+
 def _show_results(records):
-    """Render the current page's featureType-bearing records into the table."""
+    """Render the current page's records into the table and onto the map."""
     global _csw_records
     _csw_records = records
+    _clear_result_markers()
+    _reset_selection_ui()
     if not records:
         csw_results_table.visible = False
-        csw_visualize_button.visible = False
+        csw_flyto_button.visible = False
+        csw_visualize_link.visible = False
         return
     csw_results_table.value = pd.DataFrame(
         [{"title": r.title, "featureType": r.feature_type, "url": r.opendap_url} for r in records]
     )
     csw_results_table.selection = []
     csw_results_table.visible = True
-    csw_visualize_button.visible = True
+    csw_flyto_button.visible = True
+    csw_visualize_link.visible = True
+    _add_result_markers(records)
+
+
+def _selected_record():
+    """Return the CswRecord for the currently-selected table row, or None."""
+    selection = csw_results_table.selection
+    if not selection:
+        return None
+    index = selection[0]
+    if 0 <= index < len(_csw_records):
+        return _csw_records[index]
+    return None
+
+
+def _on_result_select(event):
+    """On row selection: update the Visualize link and highlight on the map."""
+    global _csw_highlight
+    record = _selected_record()
+
+    # Visualize link — a real anchor so the new tab opens on a user click.
+    if record is not None and record.opendap_url:
+        href = f"/{target_app_for(record.feature_type)}?url={record.opendap_url}"
+        csw_visualize_link.object = (
+            f'<a href="{href}" target="_blank" rel="noopener" '
+            'style="display:inline-block;padding:6px 12px;background:#0072B5;'
+            'color:white;border-radius:4px;text-decoration:none;">Visualize selected ↗</a>'
+        )
+    else:
+        csw_visualize_link.object = _VISUALIZE_PLACEHOLDER
+
+    # Highlight the selected record's location on the map.
+    loc = record.location if record is not None else None
+    if loc is None:
+        csw_flyto_button.disabled = True
+        if _csw_highlight is not None:
+            try:
+                lmap.remove_layer(_csw_highlight)
+            except Exception:
+                pass
+            _csw_highlight = None
+        return
+    csw_flyto_button.disabled = False
+    if _csw_highlight is None:
+        _csw_highlight = CircleMarker(
+            location=loc, radius=11, color="red",
+            fill_color="red", fill_opacity=0.3, weight=2,
+        )
+        lmap.add_layer(_csw_highlight)
+    else:
+        _csw_highlight.location = loc
+        if _csw_highlight not in lmap.layers:
+            lmap.add_layer(_csw_highlight)
+
+
+def fly_to_selected(event):
+    """Centre (fly) the map on the selected record's location."""
+    record = _selected_record()
+    loc = record.location if record is not None else None
+    if loc is None:
+        return
+    lmap.center = loc
+    if lmap.zoom < 6:
+        lmap.zoom = 6
 
 
 def _update_pagination(page):
@@ -483,23 +599,11 @@ def prev_csw_page(event):
         _show_page(_csw_index)
 
 
-def visualize_selected(event):
-    """Redirect to the matching app (/TSP or /TRJ) for the selected result."""
-    selection = csw_results_table.selection
-    if not selection:
-        return
-    record = _csw_records[selection[0]]
-    if not record.opendap_url:
-        csw_error_pane.object = "Selected record has no OPeNDAP URL."
-        csw_error_pane.visible = True
-        return
-    csw_redirector.redirect(f"/{target_app_for(record.feature_type)}?url={record.opendap_url}")
-
-
 csw_query_button.on_click(process_query)
-csw_visualize_button.on_click(visualize_selected)
 csw_next_button.on_click(next_csw_page)
 csw_prev_button.on_click(prev_csw_page)
+csw_flyto_button.on_click(fly_to_selected)
+csw_results_table.param.watch(_on_result_select, "selection")
 
 def clear_csw_results(event):
     """Clear CSW query results, pagination, and reset paging state.
@@ -512,10 +616,13 @@ def clear_csw_results(event):
     csw_output.visible = False
     csw_error_pane.visible = False
     csw_results_table.visible = False
-    csw_visualize_button.visible = False
+    csw_visualize_link.visible = False
+    csw_flyto_button.visible = False
     csw_page_label.visible = False
     csw_prev_button.visible = False
     csw_next_button.visible = False
+    _clear_result_markers()
+    _reset_selection_ui()
     _csw_records = []
     _csw_pages = []
     _csw_index = -1

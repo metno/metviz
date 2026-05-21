@@ -137,6 +137,15 @@ def test_resolve_feature_type_no_metadata_no_probe():
     assert resolve_feature_type(record, probe=False) is None
 
 
+def test_cswrecord_location_centre_of_bbox():
+    record = CswRecord(identifier="x", title="t", bbox=(10.0, 60.0, 12.0, 62.0))
+    assert record.location == (61.0, 11.0)  # (lat, lon)
+
+
+def test_cswrecord_location_none_without_bbox():
+    assert CswRecord(identifier="x", title="t").location is None
+
+
 def test_cswrecord_opendap_url_property():
     record = CswRecord(
         identifier="x",
