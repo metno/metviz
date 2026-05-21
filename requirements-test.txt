@@ -10,6 +10,8 @@ itsdangerous
 # CSW catalogue search (common.csw)
 owslib
 geolinks
+# Trajectory geodesic length (common.trajectory)
+geographiclib
 # Viz stack — needed to import the panel/holoviews-dependent modules under test.
 panel
 hvplot

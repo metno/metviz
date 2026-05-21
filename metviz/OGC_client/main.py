@@ -51,7 +51,8 @@ from common.browser_storage import BrowserStorage
 from common.csw import build_filter, collect_page, connect, parse_bbox
 from common.data import load_data
 from common.plot_panel import DatasetPlotPanel
-from ipyleaflet import CircleMarker, DrawControl, GeoJSON, LayersControl, Map, Marker
+from common.trajectory import track_bounds, track_points
+from ipyleaflet import CircleMarker, DrawControl, GeoJSON, LayersControl, Map, Marker, Polyline
 from ipywidgets import HTML
 
 pn.extension("ipywidgets", "tabulator", sizing_mode="stretch_width")
@@ -290,6 +291,9 @@ _csw_index = -1
 # (which only tracks Markers / WMSLayers).
 _csw_result_markers: list = []
 _csw_highlight = None
+# Trajectory overlay for the selected record (track polyline; marker added in a
+# later step). Cleared whenever the selection changes.
+_trajectory = {"line": None}
 
 # --- Remember the last CSW search inputs in the browser (localStorage) ---
 csw_storage = BrowserStorage(key="metviz_csw_search")
@@ -399,6 +403,33 @@ def _clear_result_markers():
         _csw_highlight = None
 
 
+def _clear_trajectory():
+    """Remove the trajectory track overlay from the map."""
+    line = _trajectory["line"]
+    if line is not None:
+        try:
+            lmap.remove_layer(line)
+        except Exception:
+            pass
+        _trajectory["line"] = None
+
+
+def _show_trajectory(ds):
+    """Overlay the dataset's track on the map and zoom to fit it."""
+    points = track_points(ds)
+    if len(points) < 2:
+        return
+    line = Polyline(locations=points, color="green", fill=False, weight=3)
+    lmap.add_layer(line)
+    _trajectory["line"] = line
+    bounds = track_bounds(points)
+    try:
+        if bounds is not None:
+            lmap.fit_bounds(bounds)
+    except Exception:
+        lmap.center = points[len(points) // 2]
+
+
 def _select_row(index):
     """Select table row *index* (which in turn highlights the pin)."""
     if 0 <= index < len(_csw_records):
@@ -447,6 +478,7 @@ def _show_results(records):
     global _csw_records
     _csw_records = records
     _clear_result_markers()
+    _clear_trajectory()
     _reset_selection_ui()
     plot_panel.clear()
     if not records:
@@ -486,14 +518,11 @@ def _selected_record():
 
 
 def _update_plot(record):
-    """Load the selected record's dataset and render it in the plot panel."""
+    """Load the selected record's dataset, plot it, and (for trajectories) draw
+    its track on the map. Any previous trajectory overlay is cleared first."""
+    _clear_trajectory()
     if record is None or not record.opendap_url:
         plot_panel.clear()
-        return
-    if (record.feature_type or "").lower() == "trajectory":
-        plot_panel.show_message(
-            "Trajectory datasets are not plotted here yet — open the Trajectory app."
-        )
         return
     plot_panel.loading = True
     try:
@@ -501,7 +530,10 @@ def _update_plot(record):
         if ds is None:
             plot_panel.show_message(f"Could not load dataset.\n\n`{error}`")
             return
-        plot_panel.set_dataset(ds, feature_type or record.feature_type, monotonic)
+        feature = (feature_type or record.feature_type or "").lower()
+        plot_panel.set_dataset(ds, feature, monotonic)
+        if feature == "trajectory":
+            _show_trajectory(ds)
     except Exception as exc:
         plot_panel.show_message(f"Failed to plot dataset: {exc}")
     finally:
@@ -684,6 +716,7 @@ def clear_csw_results(event):
     csw_prev_button.visible = False
     csw_next_button.visible = False
     _clear_result_markers()
+    _clear_trajectory()
     _reset_selection_ui()
     plot_panel.clear()
     _csw_records = []

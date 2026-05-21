@@ -25,6 +25,7 @@ LIBRARY_MODULES = [
     "common.logging_utils",
     "common.plotting",
     "common.plot_panel",
+    "common.trajectory",
     "utility",  # ncapp feature-type models
 ]
 
