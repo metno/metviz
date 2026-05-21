@@ -33,14 +33,12 @@ import json
 import time
 
 import holoviews as hv
-import pandas as pd
 import panel as pn
 from bokeh.layouts import Spacer, column
 from bokeh.models import Button, Div
 from common.data import load_data
 from common.download import get_download_link
 from common.logging_utils import create_logger
-from common.redirect import Redirector
 from common.urls import validate_opendap, validate_url
 from common.variables import get_axis_candidates, get_plottable_vars, sort_axis_candidates
 from common.widgets import build_download_widget, build_metadata_widget, show_hide_widget
@@ -54,21 +52,6 @@ logger = create_logger(__name__)
 logger.info("Starting the application...")
 
 templates = Jinja2Templates(directory="/app/templates")
-
-# Example datasets offered on the landing page, grouped by featureType.
-EXAMPLE_RESOURCES = {
-    "Time Series 1": "https://thredds.met.no/thredds/dodsC/arcticdata/infranor/UiO-Kongsvegen-AWS/UiO-Kongsvegen-AWS-sw200-agg.ncml",
-    "Time Series 2": "https://thredds.met.no/thredds/dodsC/arcticdata/obsSynop/01008",
-    "Profile 1": "https://opendap1.nodc.no/thredds/dodsC/chemistry/StationM/StationM_2008_2019_v2.nc",
-    "Profile 2": "https://opendap1.nodc.no/thredds/dodsC/chemistry/StationM/StationM_2008_2019_v1.nc",
-    "Time Series Profile 1": "https://thredds.met.no/thredds/dodsC/arcticdata/frost2netcdf-permafrost/SN99868/SN99868-aggregated.ncml",
-    "Time Series Profile 2": "https://thredds.met.no/thredds/dodsC/arcticdata/met.no/obs-temp/obs-temp_20892.nc",
-    "Trajectory 1": "https://thredds.met.no/thredds/dodsC/arcticdata/arctic-passion/UiT-drifters/AWS-ITO/aws_2022.nc",
-    "Trajectory 2": "https://thredds.met.no/thredds/dodsC/arcticdata/arctic-passion/UiT-drifters/SIMBA/simba-510_air-temperature2022.nc",
-}
-
-# Which Panel app handles each detected featureType.
-FEATURE_TYPE_APP = {"timeseries": "TSP", "trajectory": "TRJ", "profile": "TSP"}
 
 # Resampling-frequency labels shown in the UI.
 FREQUENCY_OPTIONS = ["--", "Hourly", "Calendar day", "Weekly", "Month end", "Quarter end", "Yearly"]
@@ -193,36 +176,20 @@ pn.state.on_session_destroyed(callback=lambda ctx: logger.info("session destroye
 
 
 # ---------------------------------------------------------------------------
-# Landing page (no url) vs. dashboard (url given)
+# Dashboard (url given) — dataset selection lives in the Search Catalog app.
 # ---------------------------------------------------------------------------
 if "url" not in pn.state.session_args:
-    redirector = Redirector()
-    resources_df = pd.DataFrame.from_dict(EXAMPLE_RESOURCES, orient="index", columns=["URL"])
-    resources_table = pn.widgets.DataFrame(resources_df, name="Example URLs")
-    url_input = pn.widgets.TextInput(name="Data URL", placeholder="Enter data URL...", width=600)
-    add_button = pn.widgets.Button(name="Add URL", button_type="primary")
-    url_button = pn.widgets.Button(name="Load Data", button_type="primary")
-
-    def add_url(event) -> None:
-        """Copy the selected example URL into the input box."""
-        selected = resources_table.selection
-        if selected:
-            url_input.value = resources_df.iloc[selected[0]]["URL"]
-
-    add_button.on_click(add_url)
-
-    @pn.depends(url_button.param.clicks, watch=True)
-    def load_data_button(clicks) -> None:
-        """Detect the featureType of the entered URL and redirect to its app."""
-        url = url_input.value
-        _, _, _, _, feature_type = load_data(url)
-        logger.info(f"FeatureType detected: {feature_type}")
-        target_app = FEATURE_TYPE_APP.get(feature_type, "TSP")
-        redirector.redirect(f"/{target_app}?url={url}")
-
-    pn.Column(
-        redirector, url_input, url_button, resources_table, add_button,
-        sizing_mode="stretch_height",
+    # No dataset selected: point the user to the Search Catalog app.
+    pn.pane.Bokeh(
+        column(
+            Div(
+                text=(
+                    "<br><b>No dataset selected.</b><br><br>"
+                    "Open the <a href='/Catalog'>Search Catalog</a> to choose a dataset, "
+                    "or pass <code>?url=&lt;OPeNDAP URL&gt;</code> in the address."
+                )
+            )
+        )
     ).servable()
 
 else:
