@@ -9,11 +9,24 @@ full TSP dashboard.
 
 from __future__ import annotations
 
+import holoviews as hv
+import numpy as np
 import panel as pn
 import xarray as xr
 
 from .plotting import plot
 from .variables import get_axis_candidates, get_plottable_vars, sort_axis_candidates
+
+
+def _cursor_vline(x, y=None):
+    """A vertical time-cursor at Bokeh x (epoch ms); hidden when x is None.
+
+    Accepts ``y`` because a HoloViews DynamicMap fed by a Tap stream passes both
+    of the stream's parameters.
+    """
+    if x is None:
+        return hv.VLine(0).opts(alpha=0)
+    return hv.VLine(np.datetime64(int(x), "ms")).opts(color="red", line_width=1.5)
 
 
 class DatasetPlotPanel:
@@ -41,6 +54,9 @@ class DatasetPlotPanel:
         self._name_by_label: dict[str, str] = {}
         # Guards programmatic widget updates so we re-plot exactly once.
         self._suppress = False
+        # Optional callback: receives the tapped x (epoch ms) when a trajectory
+        # plot is tapped, so an app can move a linked map marker.
+        self._on_time_select = None
 
         self.variable_select.param.watch(self._on_variable, "value")
         self.dimension_select.param.watch(self._on_dimension, "value")
@@ -55,6 +71,12 @@ class DatasetPlotPanel:
         self.layout.loading = value
 
     # --- public API ------------------------------------------------------
+    def set_time_callback(self, fn) -> None:
+        """Register a callback ``fn(epoch_ms)`` invoked when a trajectory plot
+        is tapped (used to move a linked map marker). Pass ``None`` to disable.
+        """
+        self._on_time_select = fn
+
     def show_message(self, text: str) -> None:
         """Show *text* instead of a plot and hide the selectors."""
         self._suppress = True
@@ -147,7 +169,25 @@ class DatasetPlotPanel:
                     widget.sizing_mode = "stretch_both"
                 except Exception:
                     pass
+                self._link_time_cursor(widget)
                 self._plot_area[:] = [widget]
             except Exception as exc:
                 self._message.object = f"Could not plot **{var}**: {exc}"
                 self._plot_area[:] = [self._message]
+
+    def _link_time_cursor(self, widget) -> None:
+        """For trajectories, tap the time-series plot to move a linked marker
+        (via the registered callback) and draw a red time cursor on the plot."""
+        if self._on_time_select is None or (self._feature_type or "") != "trajectory":
+            return
+        try:
+            source = widget.object  # the HoloViews element behind the pane
+            tap = hv.streams.Tap(source=source, x=None, y=None)
+            tap.add_subscriber(lambda x=None, y=None: self._on_time_select(x))
+            # The cursor overlay is best-effort: a failure must not break the plot.
+            try:
+                widget.object = source * hv.DynamicMap(_cursor_vline, streams=[tap])
+            except Exception as exc:
+                print(f"time cursor overlay skipped: {exc}")
+        except Exception as exc:
+            print(f"time link skipped: {exc}")
