@@ -12,6 +12,7 @@ https://github.com/ioos/notebooks_demos/blob/master/notebooks/2016-12-19-explori
 from __future__ import annotations
 
 import ast
+import os
 from dataclasses import dataclass, field
 
 from owslib import fes
@@ -38,6 +39,9 @@ DEFAULT_CRS = "urn:ogc:def:crs:OGC:1.3:CRS84"
 # Request ISO 19115/19139 (gmd) records by default — they carry a proper bounding
 # box, keywords and online resources (OPeNDAP links), unlike sparse Dublin Core.
 ISO_OUTPUT_SCHEMA = "http://www.isotc211.org/2005/gmd"
+
+# Set METVIZ_CSW_DEBUG=1 to log each GetRecords request XML + result summary.
+_CSW_DEBUG = bool(os.environ.get("METVIZ_CSW_DEBUG"))
 
 
 @dataclass
@@ -327,8 +331,20 @@ def get_page(
         outputschema=outputschema,
         esn=esn,
     )
+    if _CSW_DEBUG:
+        _log_csw_request(csw)
     records = [_to_record(r) for r in csw.records.values()]
     return records, dict(csw.results)
+
+
+def _log_csw_request(csw) -> None:
+    """Print the CSW GetRecords request XML + result summary (debug aid)."""
+    req = getattr(csw, "request", None)
+    if isinstance(req, bytes):
+        req = req.decode("utf-8", "replace")
+    print("=== CSW getrecords2 request ===")
+    print(req)
+    print("=== CSW results:", {k: csw.results.get(k) for k in ("matches", "returned", "nextrecord")})
 
 
 def keep_with_feature_type(record: CswRecord, *, probe: bool = True) -> bool:
