@@ -11,5 +11,5 @@ LOG_LEVEL=${LOG_LEVEL:-debug}
 # /trajectory
 # /tspt
 # /OGC_client /seaice/daily /seaice/monthly /seaicemod/monthlymod /anymap
-panel serve --autoreload --port ${PORT} --cookie-secret my_super_safe_cookie_secret --address 0.0.0.0 --log-level ${LOG_LEVEL} --index /assets/custom_index.html --static-dirs assets=/assets --allow-websocket-origin='*'  /TSP /TRJ /Catalog --index-titles /TSP="NC-Visualization Tool" /TRJ="Trajectory" /Catalog="Search Catalog"
+panel serve --autoreload --port ${PORT} --cookie-secret my_super_safe_cookie_secret --address 0.0.0.0 --log-level ${LOG_LEVEL} --index /assets/custom_index.html --static-dirs assets=/assets --allow-websocket-origin='*'  /TSP /TRJ /Catalog /OGC_client --index-titles /TSP="NC-Visualization Tool" /TRJ="Trajectory" /Catalog="Search Catalog" /OGC_client="OGC Client"
 # /OGC_client="OGC Client" /daily="Sea Ice Daily" /monthly="Sea Ice Monthly" /monthlymod="Sea Ice Model" /anymap="Anymap"
