@@ -878,16 +878,14 @@ def get_marker_and_map():
         tuple: (marker, lmap) where `marker` is the main Marker instance and
         `lmap` is the ipyleaflet Map instance configured for the demo.
     """
-    center = (52.204793, 360.121558)
+    center = (65.0, 13.0)  # Norway
 
-    lmap = Map(center=center, zoom=15, height=500, scroll_wheel_zoom=True)
+    lmap = Map(center=center, zoom=4, height=500, scroll_wheel_zoom=True)
 
     marker = Marker(location=center, draggable=True)
     # Add custom properties
     marker.name = "Main Marker"
     marker.description = "This is a draggable marker."
-    #
-    lmap.add_layer(marker)
     lmap.layout.height="100%"
     lmap.layout.width="100%"
     lmap.add_control(LayersControl(position='topright'))
