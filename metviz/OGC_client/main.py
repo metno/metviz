@@ -202,7 +202,7 @@ CSW_PAGE_SIZE = 10
 # Refuse any search whose CSW match count exceeds this — the user is asked to
 # narrow the query window in space and/or time. A cheap resultType="hits"
 # pre-check gets the count before we scan any records.
-MAX_HITS = 100
+MAX_HITS = 500
 csw_prev_button = pn.widgets.Button(name="◀ Prev", width=90, visible=False)
 csw_next_button = pn.widgets.Button(name="Next ▶", width=90, visible=False)
 csw_page_label = pn.widgets.StaticText(value="", visible=False)
