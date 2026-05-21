@@ -239,7 +239,7 @@
 </div>
 
 <div class="progress" id="progress"></div>
-<div class="hint">← → / Space to navigate · <b>N</b> toggles speaker notes · <b>F</b> fullscreen</div>
+<div class="hint">← → / Space navigate · <b>P</b> presenter view (your screen only) · <b>F</b> fullscreen · <b>N</b> shows notes on THIS screen</div>
 
 <script>
   var MET_LOGO = "data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHdpZHRoPSIxODIiIGhlaWdodD0iNTEiPjx0aXRsZT5TbGljZSAxPC90aXRsZT48cGF0aCBmaWxsPSIjMGI0NTVlIiBmaWxsLXJ1bGU9ImV2ZW5vZGQiIGQ9Ik0xNS42NDIgMy4xMjJDOC40NjcgMy4xMjIgMi42MyA4Ljk2IDIuNjMgMTYuMTMyYzAgNy4xNzUgNS44MzggMTMuMDExIDEzLjAxMyAxMy4wMTEgNy4xNzggMCAxMy4wMTctNS44MzYgMTMuMDE3LTEzLjAxcy01Ljg0LTEzLjAxLTEzLjAxNy0xMy4wMW0wIDI4LjMyNUM3LjIgMzEuNDQ3LjMyOCAyNC41NzUuMzI4IDE2LjEzMi4zMjggNy42OTEgNy4xOTguODIgMTUuNjQyLjgyYzguNDQ2IDAgMTUuMzE2IDYuODcgMTUuMzE2IDE1LjMxMnMtNi44NyAxNS4zMTUtMTUuMzE2IDE1LjMxNW05LjE0IDE5LjQzOS01Ljk5Mi01Ljk4OC01Ljk5NCA1Ljk4OC01Ljk5NC01Ljk4OC01LjI0IDUuMjM1LTEuNTA2LTEuNTA1IDYuNzQ2LTYuNzQgNS45OTQgNS45ODYgNS45OTQtNS45ODYgNS45OSA1Ljk4NiA1LjIzMy01LjIzNSAxLjUwOCAxLjUwOHpNNTguNyA4LjIwNGgyLjE2MlYyMi4zNEg1OC43MnYtOS44MTRsLTIuOTA4IDYuMDE5aC0xLjc3OGwtMi45MS02LjAxOXY5LjgxNGgtMi4xNFY4LjIwNGgyLjE2M2wzLjc3NiA3LjgxNXptNy41MDggNy43MzR2LjAyMWg0LjQ0NHYtLjAyYy0uMDItMS41MTUtLjkyOS0yLjI2My0yLjIyLTIuMjYzLTEuMzE0IDAtMi4yMjQuNzQ4LTIuMjI0IDIuMjYybTQuMzQ0IDMuMDloMi4xNjFjLS4zNjIgMi43NjgtMi42MDUgMy41MTYtNC4yODEgMy41MTYtMS44MTkgMC00LjM0My0uODktNC4zNDMtNC4zMjN2LTIuMjYyYzAtMy40MzMgMi41MjQtNC4zMjIgNC4zNDMtNC4zMjIgMS44MTcgMCA0LjM0MS44OSA0LjM0MSA0LjMyMnYxLjg3N2gtNi41NjV2LjM0NWMwIDEuNTc0LjkxIDIuMzIgMi4yMjQgMi4zMiAxLjA0OCAwIDEuODM4LS40ODMgMi4xMi0xLjQ3M204LjEzNi4yODNjMCAuNzY3LjE0Mi45OS45NjkuOTloMS41OTV2Mi4wMzlINzkuMDVjLTEuNzM2IDAtMi40ODQtLjg0OC0yLjQ4NC0yLjQ4M3YtNS45MzhoLTEuNDc0di0yaDEuNDc0di0yLjM2aDIuMTIydjIuMzYyaDIuNTY0djJoLTIuNTY0em03LjM2Mi0zLjM3M3YuMDIxaDQuNDQ1di0uMDJjLS4wMi0xLjUxNS0uOTMtMi4yNjMtMi4yMjEtMi4yNjMtMS4zMTQgMC0yLjIyMy43NDgtMi4yMjMgMi4yNjJtNC4zNDUgMy4wOWgyLjE2Yy0uMzYxIDIuNzY4LTIuNjA0IDMuNTE2LTQuMjgxIDMuNTE2LTEuODIgMC00LjM0My0uODktNC4zNDMtNC4zMjN2LTIuMjYyYzAtMy40MzMgMi41MjQtNC4zMjIgNC4zNDMtNC4zMjIgMS44MiAwIDQuMzQ0Ljg5IDQuMzQ0IDQuMzIydjEuODc3aC02LjU2N3YuMzQ1YzAgMS41NzQuOTA5IDIuMzIgMi4yMjMgMi4zMiAxLjA0OSAwIDEuODM5LS40ODMgMi4xMi0xLjQ3M20xMS43MTItMy4wM2MwLTEuNTc0LS45MS0yLjMyMi0yLjIyMy0yLjMyMi0xLjMxMSAwLTIuMjIuNzQ4LTIuMjIgMi4zMjJ2Mi4xODNjMCAxLjU3NC45MDkgMi4zMiAyLjIyIDIuMzIgMS4zMTQgMCAyLjIyMy0uNzQ2IDIuMjIzLTIuMzJ6bS02LjU2Ny0uMDM5YzAtMy40MzMgMi41MjUtNC4zMjIgNC4zNDQtNC4zMjIgMS44MTggMCA0LjM0Mi44OSA0LjM0MiA0LjMyMnYyLjI2MmMwIDMuNDMzLTIuNTI0IDQuMzIzLTQuMzQyIDQuMzIzLTEuODIgMC00LjM0NC0uODktNC4zNDQtNC4zMjN6bTE2LjAxNC0yLjE2MWMtMS4zMTEgMC0yLjIyLjcyNi0yLjIyIDIuM3Y2LjI0MmgtMi4xMlYxMS45MmgyLjEydjEuMDFjLjMtLjYwNyAxLjMzMy0xLjE5MyAyLjQyMy0xLjE5M2guODF2Mi4wNjF6bTkuNzU0IDIuMmMwLTEuNTc0LS45MS0yLjMyMi0yLjIyLTIuMzIyLTEuMzE0IDAtMi4yMjQuNzQ4LTIuMjI0IDIuMzIydjIuMTgzYzAgMS41NzQuOTEgMi4zMiAyLjIyNCAyLjMyIDEuMzEgMCAyLjIyLS43NDYgMi4yMi0yLjMyem0tNi41NjMtLjAzOWMwLTMuNDMzIDIuNTI0LTQuMzIyIDQuMzQzLTQuMzIyIDEuODE1IDAgNC4zNDMuODkgNC4zNDMgNC4zMjJ2Mi4yNjJjMCAzLjQzMy0yLjUyOCA0LjMyMy00LjM0MyA0LjMyMy0xLjgyIDAtNC4zNDMtLjg5LTQuMzQzLTQuMzIzem0xMy44NyAzLjM1MmMwIC43NjcuMTQzLjk5Ljk3MS45OWguMzI0djIuMDM5aC0uOTI5Yy0xLjczOCAwLTIuNDg1LS44NDgtMi40ODUtMi40ODNWOC4yMDRoMi4xMnptMTAuNDgzLTMuMzEzYzAtMS41NzQtLjkxLTIuMzIyLTIuMjIzLTIuMzIyLTEuMzEgMC0yLjIyLjc0OC0yLjIyIDIuMzIydjIuMTgzYzAgMS41NzQuOTEgMi4zMiAyLjIyIDIuMzIgMS4zMTQgMCAyLjIyMy0uNzQ2IDIuMjIzLTIuMzJ6bS02LjU2Ni0uMDM5YzAtMy40MzMgMi41MjQtNC4zMjIgNC4zNDMtNC4zMjJzNC4zNDMuODkgNC4zNDMgNC4zMjJ2Mi4yNjJjMCAzLjQzMy0yLjUyNSA0LjMyMy00LjM0MyA0LjMyMy0xLjgyIDAtNC4zNDMtLjg5LTQuMzQzLTQuMzIzem0yMy42MDYgNi4zODFoMi4xMTlWMTEuOTJoLTIuMTE5em0wLTExLjk3NWgyLjExOVY4LjIwNGgtMi4xMTl6bTQuOTg2IDguNjQyaDIuMTgyYy4xNjEgMS4wMyAxLjE1MiAxLjQ5NSAyLjI4NSAxLjQ5NS45MjggMCAxLjcxNS0uMjQzIDEuNzE1LTEuMDkgMC0uNzA2LS42MjgtLjkyOS0xLjMxNS0xLjA5bC0xLjk3Ny0uNTA1Yy0xLjM3NS0uMzQzLTIuNjQ2LTEuMTEtMi42NDYtMy4xMSAwLTIuMDYgMS42NTctMy4wNyAzLjc3NS0zLjA3IDIuMjQ1IDAgMy44IDEuMDEgNCAzLjMzaC0yLjIyM2MtLjE2LS45MDctLjk0OC0xLjI5LTEuOTE4LTEuMjktLjY0NCAwLTEuNDkyLjI0Mi0xLjQ5MiAxLjA3IDAgLjYyNy42MDUuODI5IDEuMTcxLjk2OGwxLjkxNS40ODVjMS45MDEuNDg2IDIuODUyIDEuMjkzIDIuODUyIDMuMjczLS4wMjMgMi4wNi0xLjYxOCAzLjA3LTMuODggMy4wNy0yLjQwNSAwLTQuMzItMS4xNTEtNC40NDQtMy41MzZtMTMuMTg5LTIuODQ3IDMuODk2LTQuMjRoMi41NjZsLTMuNzU3IDQuMDc4IDQuMzI0IDYuMzQyaC0yLjQ2NmwtMy4yNzItNC44MDctMS4yOSAxLjQxNHYzLjM5M2gtMi4xMjVWOC4yMDRoMi4xMjR6TTQ4Ljg4MyA0My4xNzZoMi4xMjFWMzIuNzU0aC0yLjEyMXptMC0xMS45NzhoMi4xMjFWMjkuMDRoLTIuMTIxem03Ljc1MSAxMS45NzhoLTIuMTIyVjMyLjc1NGgyLjEyMnYuOTFjLjMwMi0uNjA2IDEuMzMzLTEuMTkxIDIuNDIyLTEuMTkxIDEuOCAwIDQuMTQzIDEuMTEgNC4xNDMgNC4zMjJ2Ni4zOGgtMi4xMjJ2LTYuMzRjMC0xLjU3Ni0uOTA3LTIuMzA1LTIuMjIxLTIuMzA1cy0yLjIyMi43MjktMi4yMjIgMi4zMDR6bTIzLjIyNi0zLjAyOWMwIC43NjcuMTQuOTg3Ljk2OS45ODdoMS41OTd2Mi4wNDJoLTIuMjA0Yy0xLjczNyAwLTIuNDg0LS44NDgtMi40ODQtMi40ODV2LTUuOTM3aC0xLjQ3NHYtMmgxLjQ3NHYtMi4zNjJoMi4xMjF2Mi4zNjJoMi41Njd2MmgtMi41Njd6bS0xMy45OC0uMzA0aDIuMTgzYy4xNjIgMS4wMjkgMS4xNSAxLjQ5NSAyLjI4MSAxLjQ5NS45MyAwIDEuNzE3LS4yNDIgMS43MTctMS4wOSAwLS43MDktLjYyNi0uOTI5LTEuMzEyLTEuMDlsLTEuOTgtLjUwNWMtMS4zNzMtLjM0My0yLjY0Ni0xLjExLTIuNjQ2LTMuMTEzIDAtMi4wNTggMS42NTUtMy4wNjcgMy43NzgtMy4wNjcgMi4yNDEgMCAzLjc5NyAxLjAxIDMuOTk5IDMuMzMyaC0yLjIyMmMtLjE2Mi0uOTA5LS45NDgtMS4yOTQtMS45Mi0xLjI5NC0uNjQ3IDAtMS40OTQuMjQzLTEuNDk0IDEuMDcxIDAgLjYyNC42MDYuODI4IDEuMTcxLjk3bDEuOTIuNDgzYzEuODk5LjQ4NSAyLjg0NyAxLjI5NCAyLjg0NyAzLjI3LS4wMiAyLjA2Mi0xLjYxNSAzLjA3Mi0zLjg3NyAzLjA3Mi0yLjQwNSAwLTQuMzI0LTEuMTQ5LTQuNDQ1LTMuNTM0bTE5LjQ4OCAzLjMzM2gyLjEyVjMyLjc1NGgtMi4xMnptMC0xMS45NzhoMi4xMlYyOS4wNGgtMi4xMnptOC41ODMgOC45NDljMCAuNzY3LjE0Ljk4Ny45NjcuOTg3aDEuNTk3djIuMDQyaC0yLjIwMmMtMS43MzcgMC0yLjQ4NS0uODQ4LTIuNDg1LTIuNDg1di01LjkzN2gtMS40NzZ2LTJoMS40NzZ2LTIuMzYyaDIuMTIzdjIuMzYyaDIuNTY0djJIOTMuOTV6bTcuNTctMS4xMzJjMCAxLjU3NS45MSAyLjMwNCAyLjE2MiAyLjMwNHMyLjE2Mi0uNzI5IDIuMTYyLTIuMzA0di02LjI2aDIuMTJ2MTAuNDJoLTIuMTJ2LS45OWMtLjMwNS42MDYtMS4zMzQgMS4xOTItMi40MjQgMS4xOTItMS43OTYgMC00LjAyLTEuMjUzLTQuMDItNC4zMnYtNi4zMDNoMi4xMnptMjAuNzIyIDEuMTMyYzAgLjc2Ny4xNDIuOTg3Ljk3MS45ODdoMS41OTZ2Mi4wNDJoLTIuMjA1Yy0xLjczNCAwLTIuNDgyLS44NDgtMi40ODItMi40ODV2LTUuOTM3aC0xLjQ3NXYtMmgxLjQ3NXYtMi4zNjJoMi4xMnYyLjM2MmgyLjU2N3YyaC0yLjU2N3ptLTguMTYyIDBjMCAuNzY3LjE0Mi45ODcuOTcxLjk4N2gxLjU5NnYyLjA0MmgtMi4yYy0xLjc0IDAtMi40ODctLjg0OC0yLjQ4Ny0yLjQ4NXYtNS45MzdoLTEuNDc2di0yaDEuNDc2di0yLjM2MmgyLjEydjIuMzYyaDIuNTY3djJoLTIuNTY3em0zMi4wMjEtMjIuNTczYzAgMS41NzUuOTA5IDIuMzAyIDIuMjIzIDIuMzAyIDEuMzEgMCAyLjIyLS43MjcgMi4yMi0yLjMwMnYtMS41NzZjMC0xLjU3NC0uOTEtMi4zLTIuMjItMi4zLTEuMzE0IDAtMi4yMjMuNzI2LTIuMjIzIDIuM3ptNC40NDMgNC4zMjJ2LTEuMTUxYy0uMy42MDYtMS4zMzQgMS4xOS0yLjQyNCAxLjE5LTEuNzk2IDAtNC4xNC0xLjExLTQuMTQtNC4zMnYtMS42NTZjMC0zLjIxMyAyLjM0NC00LjMyMiA0LjE0LTQuMzIyIDEuMDkgMCAyLjEyMy41ODUgMi40MjQgMS4xOTJ2LS45MWgyLjEyMnYxMC4wMTZjMCAzLjQzNS0yLjUyNyA0LjMyMy00LjM0MiA0LjMyMy0xLjcxOSAwLTQuMDItLjc4Ni00LjMwNC0zLjcxNGgyLjE0MmMuMjIzIDEuMTMgMS4wNTIgMS42NzQgMi4xNjIgMS42NzQgMS4zMSAwIDIuMjItLjc0NyAyLjIyLTIuMzIyIi8+PC9zdmc+";
@@ -262,13 +262,80 @@
     document.getElementById('progress').style.width = ((i + 1) / slides.length * 100) + '%';
     var note = slides[i].querySelector('.notes');
     if (note) note.classList.toggle('show', notesOn);
+    syncPresenter();
   }
   function go(d) { i = Math.max(0, Math.min(slides.length - 1, i + d)); render(); }
+
+  // ---- Presenter view: a separate window only the presenter sees ----------
+  var presenterWin = null, startTime = 0;
+  function headingText(s) {
+    var k = s.querySelector('.kicker'), h = s.querySelector('h1, h2');
+    return (k ? k.textContent + ' — ' : '') + (h ? h.textContent : '');
+  }
+  function notesHTML(s) {
+    var n = s.querySelector('.notes');
+    return n ? n.innerHTML : '<em>No notes for this slide.</em>';
+  }
+  function syncPresenter() {
+    if (!presenterWin || presenterWin.closed) return;
+    var d = presenterWin.document;
+    d.getElementById('counter').textContent = (i + 1) + ' / ' + slides.length;
+    d.getElementById('cur').innerHTML = headingText(slides[i]);
+    d.getElementById('notes').innerHTML = notesHTML(slides[i]);
+    d.getElementById('next').innerHTML =
+      (i + 1 < slides.length) ? headingText(slides[i + 1]) : '<em>End of deck</em>';
+  }
+  function tickTimer() {
+    if (!presenterWin || presenterWin.closed) return;
+    var s = Math.floor((Date.now() - startTime) / 1000);
+    var mm = ('0' + Math.floor(s / 60)).slice(-2), ss = ('0' + (s % 60)).slice(-2);
+    presenterWin.document.getElementById('timer').textContent = mm + ':' + ss;
+  }
+  function openPresenter() {
+    if (presenterWin && !presenterWin.closed) { presenterWin.focus(); return; }
+    presenterWin = window.open('', 'metPresenter', 'width=760,height=680');
+    if (!presenterWin) { alert('Please allow pop-ups for this page to use the presenter view.'); return; }
+    startTime = Date.now();
+    var css = 'body{margin:0;font-family:-apple-system,Segoe UI,Roboto,Arial,sans-serif;'
+      + 'background:#07303f;color:#eaf3f7;padding:18px 22px}'
+      + '#bar{display:flex;justify-content:space-between;align-items:center;'
+      + 'border-bottom:2px solid #2a8aa8;padding-bottom:10px;margin-bottom:14px}'
+      + '#timer{font-size:30px;font-weight:700;color:#8fd6e6}'
+      + '#counter{font-size:16px;color:#a9cfdb}'
+      + 'button{font-size:18px;padding:8px 16px;margin-left:8px;border:0;border-radius:8px;'
+      + 'background:#2a8aa8;color:#fff;cursor:pointer}button:hover{background:#1d7a93}'
+      + 'h3{color:#8fd6e6;text-transform:uppercase;letter-spacing:.1em;font-size:13px;margin:18px 0 6px}'
+      + '#cur{font-size:20px;font-weight:700;color:#fff}'
+      + '#notes{font-size:19px;line-height:1.5;background:#0b455e;padding:14px 16px;border-radius:10px}'
+      + '#notes b{color:#8fd6e6}#next{font-size:17px;color:#cfe6ee}';
+    var doc = presenterWin.document;
+    doc.open();
+    doc.write('<!DOCTYPE html><html><head><meta charset="utf-8"><title>Presenter view — MET Norway</title>'
+      + '<style>' + css + '</style></head><body>'
+      + '<div id="bar"><span id="timer">00:00</span>'
+      + '<span><button id="pprev">◀ Prev</button><button id="pnext">Next ▶</button></span></div>'
+      + '<div id="counter"></div>'
+      + '<h3>Current slide</h3><div id="cur"></div>'
+      + '<h3>Speaker notes</h3><div id="notes"></div>'
+      + '<h3>Up next</h3><div id="next"></div>'
+      + '</body></html>');
+    doc.close();
+    doc.getElementById('pprev').onclick = function () { go(-1); };
+    doc.getElementById('pnext').onclick = function () { go(1); };
+    presenterWin.addEventListener('keydown', function (e) {
+      if (e.key === 'ArrowRight' || e.key === ' ' || e.key === 'PageDown') { go(1); e.preventDefault(); }
+      else if (e.key === 'ArrowLeft' || e.key === 'PageUp') { go(-1); }
+    });
+    setInterval(tickTimer, 1000);
+    syncPresenter();
+  }
+
   document.addEventListener('keydown', function (e) {
     if (e.key === 'ArrowRight' || e.key === ' ' || e.key === 'PageDown') { go(1); e.preventDefault(); }
     else if (e.key === 'ArrowLeft' || e.key === 'PageUp') { go(-1); }
     else if (e.key === 'Home') { i = 0; render(); }
     else if (e.key === 'End') { i = slides.length - 1; render(); }
+    else if (e.key === 'p' || e.key === 'P') { openPresenter(); }
     else if (e.key === 'n' || e.key === 'N') { notesOn = !notesOn; render(); }
     else if (e.key === 'f' || e.key === 'F') {
       if (!document.fullscreenElement) document.documentElement.requestFullscreen();
