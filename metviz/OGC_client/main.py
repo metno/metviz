@@ -43,16 +43,23 @@ _COMMON_ROOT = os.environ.get("METVIZ_COMMON_ROOT", "/opt/metviz")
 if _COMMON_ROOT not in sys.path:
     sys.path.insert(0, _COMMON_ROOT)
 
+import holoviews as hv
 import pandas as pd
 import panel as pn
 from bokeh.models import Button
 from common.browser_storage import BrowserStorage
 from common.csw import build_filter, collect_page, connect, parse_bbox
-from common.routing import target_app_for
+from common.data import load_data
+from common.plot_panel import DatasetPlotPanel
 from ipyleaflet import CircleMarker, DrawControl, GeoJSON, LayersControl, Map, Marker
 from ipywidgets import HTML
 
 pn.extension("ipywidgets", "tabulator", sizing_mode="stretch_width")
+hv.extension("bokeh")
+pn.param.ParamMethod.loading_indicator = True
+
+# Inline plot panel, updated when a search result row is selected.
+plot_panel = DatasetPlotPanel()
 
 
 ACCENT_BASE_COLOR = "#003366"
@@ -257,10 +264,6 @@ csw_results_table = pn.widgets.Tabulator(
     height=260,
     sizing_mode="stretch_width",
 )
-# "Visualize selected" is a real <a target="_blank"> link (updated on selection)
-# so the new tab opens on a genuine user click and is not blocked as a popup.
-_VISUALIZE_PLACEHOLDER = '<span style="color:gray;">Select a record to visualize</span>'
-csw_visualize_link = pn.pane.HTML(_VISUALIZE_PLACEHOLDER, visible=False)
 csw_flyto_button = pn.widgets.Button(name="Fly to on map", disabled=True, visible=False, width=130)
 
 # Pagination: browse the CSW result set 10 at a time so we only probe a page's
@@ -349,7 +352,7 @@ csw_dialog = pn.Column(
     csw_output,
     csw_results_table,
     pn.Row(csw_prev_button, csw_page_label, csw_next_button),
-    pn.Row(csw_flyto_button, csw_visualize_link),
+    csw_flyto_button,
     visible=True,
     margin=(10, 10),
     sizing_mode="stretch_width",
@@ -424,8 +427,7 @@ def _add_result_markers(records):
 
 
 def _reset_selection_ui():
-    """Reset the Visualize link / Fly-to button to their no-selection state."""
-    csw_visualize_link.object = _VISUALIZE_PLACEHOLDER
+    """Reset the Fly-to button to its no-selection state."""
     csw_flyto_button.disabled = True
 
 
@@ -435,10 +437,10 @@ def _show_results(records):
     _csw_records = records
     _clear_result_markers()
     _reset_selection_ui()
+    plot_panel.clear()
     if not records:
         csw_results_table.visible = False
         csw_flyto_button.visible = False
-        csw_visualize_link.visible = False
         return
     csw_results_table.value = pd.DataFrame(
         [{"title": r.title, "featureType": r.feature_type, "url": r.opendap_url} for r in records]
@@ -446,7 +448,6 @@ def _show_results(records):
     csw_results_table.selection = []
     csw_results_table.visible = True
     csw_flyto_button.visible = True
-    csw_visualize_link.visible = True
     _add_result_markers(records)
 
 
@@ -461,23 +462,32 @@ def _selected_record():
     return None
 
 
-def _on_result_select(event):
-    """On row selection: update the Visualize link and highlight on the map."""
-    global _csw_highlight
-    record = _selected_record()
-
-    # Visualize link — a real anchor so the new tab opens on a user click.
-    if record is not None and record.opendap_url:
-        href = f"/{target_app_for(record.feature_type)}?url={record.opendap_url}"
-        csw_visualize_link.object = (
-            f'<a href="{href}" target="_blank" rel="noopener" '
-            'style="display:inline-block;padding:6px 12px;background:#0072B5;'
-            'color:white;border-radius:4px;text-decoration:none;">Visualize selected ↗</a>'
+def _update_plot(record):
+    """Load the selected record's dataset and render it in the plot panel."""
+    if record is None or not record.opendap_url:
+        plot_panel.clear()
+        return
+    if (record.feature_type or "").lower() == "trajectory":
+        plot_panel.show_message(
+            "Trajectory datasets are not plotted here yet — open the Trajectory app."
         )
-    else:
-        csw_visualize_link.object = _VISUALIZE_PLACEHOLDER
+        return
+    plot_panel.loading = True
+    try:
+        ds, _decoded, error, monotonic, feature_type = load_data(record.opendap_url)
+        if ds is None:
+            plot_panel.show_message(f"Could not load dataset.\n\n`{error}`")
+            return
+        plot_panel.set_dataset(ds, feature_type or record.feature_type, monotonic)
+    except Exception as exc:
+        plot_panel.show_message(f"Failed to plot dataset: {exc}")
+    finally:
+        plot_panel.loading = False
 
-    # Highlight the selected record's location on the map.
+
+def _highlight_selected(record):
+    """Show/move the red highlight marker for the selected record's location."""
+    global _csw_highlight
     loc = record.location if record is not None else None
     if loc is None:
         csw_flyto_button.disabled = True
@@ -499,6 +509,13 @@ def _on_result_select(event):
         _csw_highlight.location = loc
         if _csw_highlight not in lmap.layers:
             lmap.add_layer(_csw_highlight)
+
+
+def _on_result_select(event):
+    """On row selection: highlight on the map and update the inline plot."""
+    record = _selected_record()
+    _highlight_selected(record)
+    _update_plot(record)
 
 
 # Zoom level used when flying to a record (2 levels further out than before).
@@ -637,13 +654,13 @@ def clear_csw_results(event):
     csw_output.visible = False
     csw_error_pane.visible = False
     csw_results_table.visible = False
-    csw_visualize_link.visible = False
     csw_flyto_button.visible = False
     csw_page_label.visible = False
     csw_prev_button.visible = False
     csw_next_button.visible = False
     _clear_result_markers()
     _reset_selection_ui()
+    plot_panel.clear()
     _csw_records = []
     _csw_pages = []
     _csw_index = -1
@@ -1125,14 +1142,24 @@ show_options_button = Button(
 )
 show_options_button.on_click(show_hide_side_opt_widget)
 
-component = pn.Column(pn.Row(show_options_button, toolbar), pn.Row(layer_manager_widget,
-                pn.Column(
-                    pn.panel(lmap, sizing_mode="stretch_both", min_height=500),
-                    pn.Row(lon_label, lat_label, width=450),
-                    pn.Row(add_marker_checkbox, json_widget)
-                ),
-                side_opt,
-                height_policy='max', sizing_mode="stretch_both"))
+component = pn.Column(
+    pn.Row(show_options_button, toolbar),
+    pn.Row(
+        layer_manager_widget,
+        pn.Column(
+            pn.panel(lmap, sizing_mode="stretch_both", min_height=500),
+            pn.Row(lon_label, lat_label, width=450),
+            pn.Row(add_marker_checkbox, json_widget),
+        ),
+        side_opt,
+        height_policy="max",
+        sizing_mode="stretch_both",
+    ),
+    pn.layout.Divider(),
+    # Inline plot of the selected search result.
+    plot_panel.layout,
+    sizing_mode="stretch_both",
+)
 
 
 # template = pn.template.BootstrapTemplate(
