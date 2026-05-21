@@ -70,7 +70,6 @@ from ipyleaflet import (
     Map,
     Marker,
     Polyline,
-    TileLayer,
     WMSLayer,
 )
 from ipywidgets import HTML
@@ -881,20 +880,6 @@ csw_toggle.param.watch(toggle_csw_dialog, 'value')
 
 # --- Map and Marker Management ---
 
-def _drop_osm_basemap(m):
-    """Remove the default OpenStreetMap (Web-Mercator) tile basemap.
-
-    A blank background lets WGS84 (EPSG:4326) WMS overlays load without the
-    Mercator tile layer clashing with them. Re-enable a standard leaflet
-    basemap by uncommenting the line below.
-    """
-    # from ipyleaflet import basemap_to_tiles, basemaps
-    # m.add_layer(basemap_to_tiles(basemaps.OpenStreetMap.Mapnik))
-    for layer in list(m.layers):
-        if isinstance(layer, TileLayer):
-            m.remove_layer(layer)
-
-
 def get_marker_and_map():
     """Create the initial ipyleaflet Map and a main draggable Marker.
 
@@ -905,7 +890,6 @@ def get_marker_and_map():
     center = (65.0, 13.0)  # Norway
 
     lmap = Map(center=center, zoom=4, height=500, scroll_wheel_zoom=True)
-    _drop_osm_basemap(lmap)
 
     marker = Marker(location=center, draggable=True)
     # Add custom properties
@@ -1295,7 +1279,6 @@ def _make_map(projection):
         m = Map(center=(80, 0), zoom=2, crs=_POLAR_CRS, basemap=_polar_basemap(), scroll_wheel_zoom=True)
     else:
         m = Map(center=(60, 0), zoom=3, scroll_wheel_zoom=True)
-        _drop_osm_basemap(m)
     m.layout.height = "100%"
     m.layout.width = "100%"
     m.add_control(LayersControl(position="topright"))
