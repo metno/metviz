@@ -254,8 +254,10 @@ csw_output.visible = False
 csw_output.disabled = True
 
 # --- Search results -> visualize routing ---
+# The "link" column holds a small icon linking to the OPeNDAP URL (rendered as
+# HTML) so the long URL text doesn't bloat the table; selecting the row plots it.
 csw_results_table = pn.widgets.Tabulator(
-    pd.DataFrame(columns=["title", "featureType", "url"]),
+    pd.DataFrame(columns=["title", "featureType", "link"]),
     name="Results",
     disabled=True,
     selectable=1,
@@ -263,6 +265,9 @@ csw_results_table = pn.widgets.Tabulator(
     visible=False,
     height=260,
     sizing_mode="stretch_width",
+    formatters={"link": {"type": "html"}},
+    titles={"link": "", "featureType": "type"},
+    widths={"featureType": 110, "link": 44},
 )
 csw_flyto_button = pn.widgets.Button(name="Fly to on map", disabled=True, visible=False, width=130)
 
@@ -449,7 +454,19 @@ def _show_results(records):
         csw_flyto_button.visible = False
         return
     csw_results_table.value = pd.DataFrame(
-        [{"title": r.title, "featureType": r.feature_type, "url": r.opendap_url} for r in records]
+        [
+            {
+                "title": r.title,
+                "featureType": r.feature_type,
+                "link": (
+                    f'<a href="{r.opendap_url}" target="_blank" rel="noopener" '
+                    'title="Open OPeNDAP URL">🔗</a>'
+                    if r.opendap_url else ""
+                ),
+            }
+            for r in records
+        ],
+        columns=["title", "featureType", "link"],
     )
     csw_results_table.selection = []
     csw_results_table.visible = True
@@ -1168,7 +1185,7 @@ template = pn.template.ReactTemplate(
     sidebar=[search_card],
     sidebar_width=380,
 )
-template.main[0:6, 0:6] = map_card
-template.main[0:6, 6:12] = plot_card
-template.main[6:11, 0:12] = results_card
+template.main[0:4, 0:6] = map_card
+template.main[0:4, 6:12] = plot_card
+template.main[4:9, 0:12] = results_card
 template.servable()
