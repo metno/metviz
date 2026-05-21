@@ -47,6 +47,7 @@ import holoviews as hv
 import pandas as pd
 import panel as pn
 from bokeh.models import Button
+from common.basemap import land_geojson
 from common.browser_storage import BrowserStorage
 from common.csw import (
     CswRecord,
@@ -70,6 +71,7 @@ from ipyleaflet import (
     Map,
     Marker,
     Polyline,
+    TileLayer,
     WMSLayer,
     projections,
 )
@@ -1087,8 +1089,8 @@ def on_mouse_move(**kwargs):
 def on_draw_handler(draw, action, geo_json):
     print("drawing action:", action)
     for i in lmap.layers:
-        if isinstance(i, GeoJSON):
-            print("ok")
+        # Remove a previously drawn shape, but keep the land basemap.
+        if isinstance(i, GeoJSON) and getattr(i, "name", "") != LAND_LAYER_NAME:
             lmap.remove_layer(i)
     bounds = geo_json["geometry"]["coordinates"][0]
     # Leaflet can hand back "unwrapped" longitudes (e.g. after panning across
@@ -1260,49 +1262,71 @@ _WGS84 = "WGS84 (lat/lon)"
 # WMS layers picked as UPS North render here. Many polar WMS services (e.g.
 # adc-wms.met.no) advertise EPSG:32661/5041 (same projection; the name sets the
 # SRS sent to the WMS).
+# UPS North has a 2,000,000 m false easting/northing, so the pole sits at
+# (2e6, 2e6) and the tile pyramid is centred there (not at the origin). Bounds
+# span +/- 9,036,842.76 m around the pole; resolutions halve from full-bounds.
+_UPS_FALSE = 2_000_000.0
+_UPS_HALF = 9_036_842.7625
 _POLAR_CRS = {
     "name": "EPSG:32661",
     "custom": True,
     "proj4def": "+proj=stere +lat_0=90 +lat_ts=90 +lon_0=0 +k=0.994 +x_0=2000000 +y_0=2000000 +datum=WGS84 +units=m +no_defs",
-    "origin": [-9036842.762500001, 9036842.762500001],
-    "bounds": [[-9036842.762500001, -9036842.762500001], [9036842.762500001, 9036842.762500001]],
-    "resolutions": [
-        238810.813354,
-        119405.406677,
-        59702.7033384999,
-        29851.3516692501,
-        14925.675834625,
-        7462.83791731252,
-        3731.41895865639,
-        1865.70947932806,
-        932.854739664032,
+    "origin": [_UPS_FALSE - _UPS_HALF, _UPS_FALSE + _UPS_HALF],
+    "bounds": [
+        [_UPS_FALSE - _UPS_HALF, _UPS_FALSE - _UPS_HALF],
+        [_UPS_FALSE + _UPS_HALF, _UPS_FALSE + _UPS_HALF],
     ],
+    "resolutions": [(2 * _UPS_HALF / 256) / (2**z) for z in range(8)],
 }
 
 
-def _polar_basemap():
-    return WMSLayer(
-        url="https://wms.gebco.net/2024/north-polar/mapserv?request=getcapabilities&service=wms&version=1.3.0",
-        layers="GEBCO_NORTH_POLAR_VIEW_ICE_2024",
-        format="image/png",
-        transparent=True,
-        min_zoom=0,
-        attribution="GEBCO",
-        crs=_POLAR_CRS,
+# All three projections open centred on Norway.
+NORWAY_CENTER = (65.0, 13.0)
+# Land-basemap layer name, also skipped by the draw handler so a drawn bbox
+# doesn't remove it.
+LAND_LAYER_NAME = "Land"
+
+
+def _drop_tile_basemaps(m):
+    """Remove any tile basemap (e.g. the default OSM, which is Web-Mercator).
+
+    OSM tiles don't render in EPSG:4326 or the polar CRS, so those maps use the
+    vector land basemap instead.
+    """
+    for layer in list(m.layers):
+        if isinstance(layer, TileLayer):
+            m.remove_layer(layer)
+
+
+def _add_land(m, min_lat=None):
+    """Add the vector land basemap (reprojects into the map's CRS)."""
+    m.add_layer(
+        GeoJSON(
+            data=land_geojson(min_lat=min_lat),
+            name=LAND_LAYER_NAME,
+            style={"color": "#9aa0a6", "weight": 1, "fillColor": "#e9ecef", "fillOpacity": 1.0},
+        )
     )
 
 
 def _make_map(projection):
     """Build a fresh ipyleaflet Map for the given projection (no overlays)."""
     if projection == _POLAR:
-        m = Map(center=(80, 0), zoom=2, crs=_POLAR_CRS, basemap=_polar_basemap(), scroll_wheel_zoom=True)
+        # UPS North has no public tile basemap; use the vector land layer
+        # (northern hemisphere only — UPS North is undefined in the south).
+        m = Map(center=NORWAY_CENTER, zoom=4, crs=_POLAR_CRS, scroll_wheel_zoom=True)
+        _drop_tile_basemaps(m)
+        _add_land(m, min_lat=20)
     elif projection == _WGS84:
         # EPSG:4326 lat/lon grid. Many polar/national WMS services (e.g.
         # adc-wms.met.no) serve EPSG:4326 but NOT Web Mercator, so a GetMap from
         # a 3857 map fails with HTTP 500; a 4326 map makes those layers render.
-        m = Map(center=(79, 11), zoom=4, crs=projections.EPSG4326, scroll_wheel_zoom=True)
+        # OSM tiles don't tile in 4326, so use the vector land basemap.
+        m = Map(center=NORWAY_CENTER, zoom=4, crs=projections.EPSG4326, scroll_wheel_zoom=True)
+        _drop_tile_basemaps(m)
+        _add_land(m)
     else:
-        m = Map(center=(60, 0), zoom=3, scroll_wheel_zoom=True)
+        m = Map(center=NORWAY_CENTER, zoom=4, scroll_wheel_zoom=True)
     m.layout.height = "100%"
     m.layout.width = "100%"
     m.add_control(LayersControl(position="topright"))
