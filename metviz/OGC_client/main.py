@@ -1328,7 +1328,10 @@ map_card = pn.Card(
 )
 # Detail card content swaps between the inline plot (OPeNDAP) and the WMS layer
 # picker (WMS) as the search source changes.
-detail_pane = pn.Column(plot_panel.layout, sizing_mode="stretch_both")
+detail_pane = pn.Column(
+    wms_loader.layout if _wms_mode() else plot_panel.layout,
+    sizing_mode="stretch_both",
+)
 plot_card = pn.Card(
     detail_pane,
     title="Plot / WMS layers",
