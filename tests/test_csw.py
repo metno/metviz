@@ -1,14 +1,44 @@
+from types import SimpleNamespace
+
 import pytest
 from common.csw import (
     CswRecord,
     build_filter,
     extract_opendap_url,
     feature_type_from_record,
+    get_page,
     parse_bbox,
     resolve_feature_type,
 )
 from common.routing import target_app_for
 from owslib import fes
+
+
+class _FakeCsw:
+    """Minimal stand-in for owslib CatalogueServiceWeb for get_page tests."""
+
+    def __init__(self):
+        self.records = {}
+        self.results = {}
+        self.last_call = None
+
+    def getrecords2(self, **kwargs):
+        self.last_call = kwargs
+        self.records = {
+            "a": SimpleNamespace(identifier="a", title="A", references=[], subjects=["timeSeries"]),
+            "b": SimpleNamespace(identifier="b", title="B", references=[], subjects=[]),
+        }
+        self.results = {"matches": 42, "returned": 2, "nextrecord": 3}
+
+
+def test_get_page_passes_paging_params_and_converts_records():
+    csw = _FakeCsw()
+    records, results = get_page(csw, [], startposition=11, pagesize=10)
+    assert csw.last_call["startposition"] == 11
+    assert csw.last_call["maxrecords"] == 10
+    assert [r.identifier for r in records] == ["a", "b"]
+    assert all(isinstance(r, CswRecord) for r in records)
+    assert results["matches"] == 42 and results["returned"] == 2
 
 
 def test_build_filter_single_text_term_not_wrapped_in_or():
