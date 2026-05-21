@@ -1,12 +1,38 @@
 import pytest
 from common.csw import (
     CswRecord,
+    build_filter,
     extract_opendap_url,
     feature_type_from_record,
     parse_bbox,
     resolve_feature_type,
 )
 from common.routing import target_app_for
+from owslib import fes
+
+
+def test_build_filter_single_text_term_not_wrapped_in_or():
+    # Regression: fes.Or/And require >= 2 operands; a lone term must not be
+    # wrapped, or owslib raises "Binary operations ... require a minimum of two".
+    result = build_filter(text="temperature")
+    assert len(result) == 1
+    assert isinstance(result[0], fes.PropertyIsLike)
+
+
+def test_build_filter_multiple_text_terms_use_or():
+    result = build_filter(text=["a", "b"])
+    assert len(result) == 1
+    assert isinstance(result[0], fes.Or)
+
+
+def test_build_filter_combines_with_and():
+    result = build_filter(text="temp", bbox=[-10.0, 60.0, 5.0, 70.0])
+    assert len(result) == 1
+    assert isinstance(result[0], fes.And)
+
+
+def test_build_filter_empty_query():
+    assert build_filter() == []
 
 
 @pytest.mark.parametrize(
