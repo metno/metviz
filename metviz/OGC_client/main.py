@@ -1298,11 +1298,11 @@ def _drop_tile_basemaps(m):
             m.remove_layer(layer)
 
 
-def _add_land(m, min_lat=None):
+def _add_land(m):
     """Add the vector land basemap (reprojects into the map's CRS)."""
     m.add_layer(
         GeoJSON(
-            data=land_geojson(min_lat=min_lat),
+            data=land_geojson(),
             name=LAND_LAYER_NAME,
             style={"color": "#9aa0a6", "weight": 1, "fillColor": "#e9ecef", "fillOpacity": 1.0},
         )
@@ -1312,11 +1312,10 @@ def _add_land(m, min_lat=None):
 def _make_map(projection):
     """Build a fresh ipyleaflet Map for the given projection (no overlays)."""
     if projection == _POLAR:
-        # UPS North has no public tile basemap; use the vector land layer
-        # (northern hemisphere only — UPS North is undefined in the south).
+        # UPS North has no public tile basemap; use the vector land layer.
         m = Map(center=NORWAY_CENTER, zoom=4, crs=_POLAR_CRS, scroll_wheel_zoom=True)
         _drop_tile_basemaps(m)
-        _add_land(m, min_lat=20)
+        _add_land(m)
     elif projection == _WGS84:
         # EPSG:4326 lat/lon grid. Many polar/national WMS services (e.g.
         # adc-wms.met.no) serve EPSG:4326 but NOT Web Mercator, so a GetMap from
