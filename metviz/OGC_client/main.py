@@ -71,6 +71,7 @@ from ipyleaflet import (
     Marker,
     Polyline,
     WMSLayer,
+    projections,
 )
 from ipywidgets import HTML
 
@@ -1249,6 +1250,7 @@ show_options_button.on_click(show_hide_side_opt_widget)
 # building a fresh Map and re-applying the overlays.
 _MERCATOR = "Web Mercator"
 _POLAR = "North Polar Stereographic"
+_WGS84 = "WGS84 (lat/lon)"
 
 # North-polar-stereographic CRS + GEBCO basemap (carried over from the TRJ app).
 _POLAR_CRS = {
@@ -1277,6 +1279,11 @@ def _make_map(projection):
     """Build a fresh ipyleaflet Map for the given projection (no overlays)."""
     if projection == _POLAR:
         m = Map(center=(80, 0), zoom=2, crs=_POLAR_CRS, basemap=_polar_basemap(), scroll_wheel_zoom=True)
+    elif projection == _WGS84:
+        # EPSG:4326 lat/lon grid. Many polar/national WMS services (e.g.
+        # adc-wms.met.no) serve EPSG:4326 but NOT Web Mercator, so a GetMap from
+        # a 3857 map fails with HTTP 500; a 4326 map makes those layers render.
+        m = Map(center=(79, 11), zoom=4, crs=projections.EPSG4326, scroll_wheel_zoom=True)
     else:
         m = Map(center=(60, 0), zoom=3, scroll_wheel_zoom=True)
     m.layout.height = "100%"
@@ -1316,7 +1323,7 @@ def _rebuild_map(projection):
 
 
 projection_select = pn.widgets.RadioButtonGroup(
-    name="Projection", options=[_MERCATOR, _POLAR], value=_MERCATOR
+    name="Projection", options=[_MERCATOR, _POLAR, _WGS84], value=_MERCATOR
 )
 projection_select.param.watch(lambda event: _rebuild_map(event.new), "value")
 
