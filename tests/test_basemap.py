@@ -1,21 +1,36 @@
-from common.basemap import _max_lat, land_geojson
+from common.basemap import land_geojson
 
 
-def test_land_geojson_loads_feature_collection():
+def test_land_geojson_loads_multipolygon():
     data = land_geojson()
     assert data["type"] == "FeatureCollection"
-    assert len(data["features"]) > 0
+    geom = data["features"][0]["geometry"]
+    assert geom["type"] == "MultiPolygon"
+    assert len(geom["coordinates"]) > 100  # detailed regional coastline
 
 
-def test_land_geojson_min_lat_filters_southern_features():
-    full = land_geojson()
-    northern = land_geojson(min_lat=20)
-    assert 0 < len(northern["features"]) < len(full["features"])
-    # every kept feature reaches at least 20N
-    for f in northern["features"]:
-        assert _max_lat(f["geometry"]["coordinates"]) >= 20
+def _covers(polys, lat, lon):
+    for poly in polys:
+        ring = poly[0]
+        xs = [p[0] for p in ring]
+        ys = [p[1] for p in ring]
+        if min(xs) <= lon <= max(xs) and min(ys) <= lat <= max(ys):
+            return True
+    return False
 
 
-def test_max_lat_handles_nested_coordinates():
-    # a single Polygon ring
-    assert _max_lat([[[0.0, 10.0], [1.0, 70.0], [2.0, 5.0]]]) == 70.0
+def test_land_geojson_covers_svalbard_mainland_and_jan_mayen():
+    polys = land_geojson()["features"][0]["geometry"]["coordinates"]
+    assert _covers(polys, 78, 16)     # Svalbard
+    assert _covers(polys, 60, 7)      # mainland Norway
+    assert _covers(polys, 71, -8.5)   # Jan Mayen
+
+
+def test_land_geojson_clipped_to_region():
+    # No coordinates should fall far outside the Norway+Svalbard clip box.
+    polys = land_geojson()["features"][0]["geometry"]["coordinates"]
+    for poly in polys:
+        for ring in poly:
+            for lon, lat in ring:
+                assert -12.001 <= lon <= 36.001
+                assert 56.0 <= lat <= 82.001
