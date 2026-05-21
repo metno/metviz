@@ -1081,8 +1081,10 @@ def on_draw_handler(draw, action, geo_json):
             print("ok")
             lmap.remove_layer(i)
     bounds = geo_json["geometry"]["coordinates"][0]
-    modified_bounds = [[lon - 360, lat] for lon, lat in bounds]
-    # bounds = [[i[0] - 360, i[1]] for i in bounds if i[0] >= 180]
+    # Leaflet can hand back "unwrapped" longitudes (e.g. after panning across
+    # the antimeridian, or > 180 in some projections). CRS84 needs lon in
+    # [-180, 180], so normalise rather than blindly subtracting 360.
+    modified_bounds = [[((lon + 180) % 360) - 180, lat] for lon, lat in bounds]
     ll = modified_bounds[0]
     ur = modified_bounds[2]
 
