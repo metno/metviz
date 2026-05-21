@@ -32,6 +32,7 @@ This file is intended for exploratory/demo use and is kept small and
 imperative; functions are documented with docstrings to aid maintenance.
 """
 
+import datetime as dt
 import os
 import sys
 
@@ -45,6 +46,7 @@ if _COMMON_ROOT not in sys.path:
 import pandas as pd
 import panel as pn
 from bokeh.models import Button
+from common.browser_storage import BrowserStorage
 from common.csw import parse_bbox, search_with_feature_type
 from common.redirect import Redirector
 from common.routing import target_app_for
@@ -262,9 +264,64 @@ csw_visualize_button = pn.widgets.Button(name="Visualize selected", button_type=
 # Backing CswRecord list for the rows currently shown in the table.
 _csw_records: list = []
 
+# --- Remember the last CSW search inputs in the browser (localStorage) ---
+csw_storage = BrowserStorage(key="metviz_csw_search")
+_CSW_FIELDS = {
+    "endpoint": csw_url_input,
+    "text": csw_anytext_input,
+    "bbox": csw_bbox_label,
+    "start": csw_datetime_picker_start,
+    "end": csw_datetime_picker_end,
+}
+_CSW_DATETIME_FIELDS = {"start", "end"}
+# Guard so restoring values into widgets does not immediately re-save them.
+_csw_restoring = {"flag": False}
+
+
+def _csw_serialize(name, value):
+    """Make a widget value JSON-safe (datetimes -> ISO 8601 strings)."""
+    if name in _CSW_DATETIME_FIELDS and value is not None:
+        return value.isoformat()
+    return value
+
+
+def _csw_deserialize(name, value):
+    """Inverse of :func:`_csw_serialize` (ISO 8601 -> datetime)."""
+    if name in _CSW_DATETIME_FIELDS and value:
+        try:
+            return dt.datetime.fromisoformat(value)
+        except (TypeError, ValueError):
+            return None
+    return value
+
+
+def _save_csw_inputs(*events):
+    """Persist the current CSW inputs to the browser store."""
+    if _csw_restoring["flag"]:
+        return
+    csw_storage.value = {name: _csw_serialize(name, w.value) for name, w in _CSW_FIELDS.items()}
+
+
+def _restore_csw_inputs(event):
+    """Apply stored CSW inputs to the widgets (on page load / restore)."""
+    data = event.new or {}
+    _csw_restoring["flag"] = True
+    try:
+        for name, widget in _CSW_FIELDS.items():
+            if name in data:
+                widget.value = _csw_deserialize(name, data[name])
+    finally:
+        _csw_restoring["flag"] = False
+
+
+for _csw_field in _CSW_FIELDS.values():
+    _csw_field.param.watch(_save_csw_inputs, "value")
+csw_storage.param.watch(_restore_csw_inputs, "value")
+
 
 csw_dialog = pn.Column(
     csw_redirector,
+    csw_storage,
     pn.Row(csw_url_input, csw_url_reset_button),
     pn.Row(csw_anytext_input, csw_anytext_reset_button),
     pn.Row(csw_bbox_label, csw_bbox_reset_button),

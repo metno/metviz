@@ -21,6 +21,7 @@ LIBRARY_MODULES = [
     "common.download",
     "common.widgets",
     "common.redirect",
+    "common.browser_storage",
     "common.logging_utils",
     "plotting",
     "utility",  # ncapp feature-type models
