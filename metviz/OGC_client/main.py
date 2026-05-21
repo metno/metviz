@@ -52,7 +52,7 @@ from common.csw import CswRecord, build_filter, collect_page, connect, parse_bbo
 from common.data import load_data
 from common.plot_panel import DatasetPlotPanel
 from common.trajectory import nearest_index_for_time, track_bounds, track_points
-from ipyleaflet import CircleMarker, DrawControl, GeoJSON, LayersControl, Map, Marker, Polyline
+from ipyleaflet import CircleMarker, DrawControl, GeoJSON, LayersControl, Map, Marker, Polyline, WMSLayer
 from ipywidgets import HTML
 
 pn.extension("ipywidgets", "tabulator", sizing_mode="stretch_width")
@@ -68,7 +68,7 @@ ACCENT_BASE_COLOR = "#003366"
 import owslib.wms
 
 # --- WMS GetCapabilities UI ---
-from ipyleaflet import WMSLayer, projections
+from ipyleaflet import projections
 
 # --- WMS GetCapabilities UI ---
 
@@ -421,11 +421,8 @@ def _clear_trajectory():
     _trajectory["points"] = None
 
 
-def _show_trajectory(ds):
-    """Overlay the dataset's track + a marker on the map and zoom to fit."""
-    points = track_points(ds)
-    if len(points) < 2:
-        return
+def _draw_trajectory(points, times):
+    """Draw a track polyline + marker on the current map and zoom to fit."""
     line = Polyline(locations=points, color="green", fill=False, weight=3)
     lmap.add_layer(line)
     _trajectory["line"] = line
@@ -433,13 +430,22 @@ def _show_trajectory(ds):
     lmap.add_layer(marker)
     _trajectory["marker"] = marker
     _trajectory["points"] = points
-    _trajectory["times"] = ds["time"].values if "time" in ds.variables else None
+    _trajectory["times"] = times
     bounds = track_bounds(points)
     try:
         if bounds is not None:
             lmap.fit_bounds(bounds)
     except Exception:
         lmap.center = points[len(points) // 2]
+
+
+def _show_trajectory(ds):
+    """Overlay the dataset's track + a marker on the map and zoom to fit."""
+    points = track_points(ds)
+    if len(points) < 2:
+        return
+    times = ds["time"].values if "time" in ds.variables else None
+    _draw_trajectory(points, times)
 
 
 def _on_plot_time(x):
@@ -1246,12 +1252,90 @@ show_options_button = Button(label="show opt", height=30, width=120, visible=Fal
 show_options_button.on_click(show_hide_side_opt_widget)
 
 
+# --- Map projection switch ---------------------------------------------------
+# ipyleaflet's CRS is fixed at construction, so switching projection means
+# building a fresh Map and re-applying the overlays.
+_MERCATOR = "Web Mercator"
+_POLAR = "North Polar Stereographic"
+
+# North-polar-stereographic CRS + GEBCO basemap (carried over from the TRJ app).
+_POLAR_CRS = {
+    "name": "EPSG:3996",
+    "custom": True,
+    "proj4def": "+proj=stere +lat_0=90 +lat_ts=75 +lon_0=0 +x_0=0 +y_0=0 +datum=WGS84 +units=m +no_defs +type=crs",
+    "origin": [0.0, -1935824.39],
+    "bounds": [[-3333793.82, -3368075.98], [3333793.82, 3368075.98]],
+    "resolutions": [16384.0, 8192.0, 4096.0, 2048.0, 1024.0, 512.0, 256.0],
+}
+
+
+def _polar_basemap():
+    return WMSLayer(
+        url="https://wms.gebco.net/2024/north-polar/mapserv?request=getcapabilities&service=wms&version=1.3.0",
+        layers="GEBCO_NORTH_POLAR_VIEW_ICE_2024",
+        format="image/png",
+        transparent=True,
+        min_zoom=0,
+        attribution="GEBCO",
+        crs=_POLAR_CRS,
+    )
+
+
+def _make_map(projection):
+    """Build a fresh ipyleaflet Map for the given projection (no overlays)."""
+    if projection == _POLAR:
+        m = Map(center=(80, 0), zoom=2, crs=_POLAR_CRS, basemap=_polar_basemap(), scroll_wheel_zoom=True)
+    else:
+        m = Map(center=(60, 0), zoom=3, scroll_wheel_zoom=True)
+    m.layout.height = "100%"
+    m.layout.width = "100%"
+    m.add_control(LayersControl(position="topright"))
+    return m
+
+
+def _reapply_overlays():
+    """Redraw result pins, highlight and trajectory on the (new) map."""
+    global _csw_highlight
+    _csw_result_markers.clear()
+    _csw_highlight = None
+    points, times = _trajectory["points"], _trajectory["times"]
+    _trajectory["line"] = None
+    _trajectory["marker"] = None
+    if _csw_records:
+        _add_result_markers(_csw_records)
+    if points:
+        _draw_trajectory(points, times)
+    _highlight_selected(_selected_record())
+
+
+def _rebuild_map(projection):
+    """Replace the map with one in *projection*, re-wiring controls + overlays."""
+    global lmap, draw
+    lmap = _make_map(projection)
+    draw = DrawControl(
+        edit=True, remove=True, circlemarker={}, marker={}, circle={},
+        polyline={}, polygon={}, rectangle={"shapeOptions": {}},
+    )
+    draw.on_draw(on_draw_handler)
+    lmap.add_control(draw)
+    lmap.on_interaction(on_mouse_move)
+    map_pane.object = lmap
+    _reapply_overlays()
+
+
+projection_select = pn.widgets.RadioButtonGroup(
+    name="Projection", options=[_MERCATOR, _POLAR], value=_MERCATOR
+)
+projection_select.param.watch(lambda event: _rebuild_map(event.new), "value")
+
+
 # --- Layout: React template (resizable, draggable grid) ----------------------
 # Sidebar: collapsible CSW search + the compact results table (same column).
 # Main area: map and plot side by side, each a draggable/resizable grid card.
+map_pane = pn.panel(lmap, sizing_mode="stretch_both", min_height=380)
 map_card = pn.Card(
-    pn.panel(lmap, sizing_mode="stretch_both", min_height=380),
-    pn.Row(lon_label, lat_label),
+    pn.Row(projection_select, pn.Row(lon_label, lat_label)),
+    map_pane,
     title="Map",
     collapsible=False,
     margin=0,
