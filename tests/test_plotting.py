@@ -1,7 +1,7 @@
 import numpy as np
 import pandas as pd
 import xarray as xr
-from plotting import (
+from common.plotting import (
     _apply_orientation,
     _datetime_coords,
     _first_var,

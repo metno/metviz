@@ -23,7 +23,8 @@ LIBRARY_MODULES = [
     "common.redirect",
     "common.browser_storage",
     "common.logging_utils",
-    "plotting",
+    "common.plotting",
+    "common.plot_panel",
     "utility",  # ncapp feature-type models
 ]
 

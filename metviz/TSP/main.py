@@ -10,7 +10,7 @@ Served as a Panel directory app (``panel serve /TSP``). Two modes:
   render the plot.
 
 Generic helpers live in the shared ``common`` package; plotting lives in
-``plotting.py``; this module wires the widgets and callbacks together.
+``common.plotting``; this module wires the widgets and callbacks together.
 
 Copyright 2022 MET Norway. Licensed under the Apache License, Version 2.0.
 """
@@ -39,10 +39,10 @@ from bokeh.models import Button, Div
 from common.data import load_data
 from common.download import get_download_link
 from common.logging_utils import create_logger
+from common.plotting import plot, plot_quadmesh
 from common.urls import validate_opendap, validate_url
 from common.variables import get_axis_candidates, get_plottable_vars, sort_axis_candidates
 from common.widgets import build_download_widget, build_metadata_widget, show_hide_widget
-from plotting import plot, plot_quadmesh
 from starlette.templating import Jinja2Templates
 
 pn.param.ParamMethod.loading_indicator = True
