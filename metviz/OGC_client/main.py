@@ -47,7 +47,7 @@ import pandas as pd
 import panel as pn
 from bokeh.models import Button
 from common.browser_storage import BrowserStorage
-from common.csw import build_filter, connect, get_page, parse_bbox, resolve_feature_type
+from common.csw import build_filter, collect_page, connect, parse_bbox
 from common.redirect import Redirector
 from common.routing import target_app_for
 from ipyleaflet import DrawControl, GeoJSON, LayersControl, Map, Marker
@@ -269,9 +269,12 @@ csw_prev_button = pn.widgets.Button(name="◀ Prev", width=90, visible=False)
 csw_next_button = pn.widgets.Button(name="Next ▶", width=90, visible=False)
 csw_page_label = pn.widgets.StaticText(value="", visible=False)
 
-# Per-session paging state and the CswRecord list backing the current page.
+# Per-session paging state. _csw_pages is a history of computed page dicts so
+# Prev is instant; _csw_index points at the page currently shown.
 _csw_records: list = []
-_csw_state = {"csw": None, "filter": None, "startposition": 1, "matches": 0, "returned": 0}
+_csw_state = {"csw": None, "filter": None, "matches": 0}
+_csw_pages: list = []
+_csw_index = -1
 
 # --- Remember the last CSW search inputs in the browser (localStorage) ---
 csw_storage = BrowserStorage(key="metviz_csw_search")
@@ -375,58 +378,53 @@ def _show_results(records):
     csw_visualize_button.visible = True
 
 
-def _update_pagination():
-    """Update the page label and enable/disable the Prev/Next buttons."""
-    start = _csw_state["startposition"]
-    returned = _csw_state["returned"]
+def _update_pagination(page):
+    """Update the page label and Prev/Next buttons for the given *page* dict.
+
+    The label deliberately distinguishes the featureType-bearing records shown
+    from the raw catalogue match count: the filtered total is unknown until the
+    whole result set has been scanned (``page['end']``).
+    """
+    n = len(page["records"])
+    offset = page["offset"]
     total = _csw_state["matches"]
-    end = start + returned - 1 if returned else start - 1
-    csw_page_label.value = f"Showing {start}–{max(start, end)} of {total} matching records"
-    csw_page_label.visible = total > 0
+    scanned = page["next"] - 1
+    if n == 0:
+        label = f"No datasets with a featureType (scanned all {total} catalogue matches)"
+    elif page["end"]:
+        label = (
+            f"Showing {offset + 1}–{offset + n} of {offset + n} datasets with a featureType "
+            f"(scanned all {total} catalogue matches)"
+        )
+    else:
+        label = (
+            f"Showing {offset + 1}–{offset + n} datasets with a featureType "
+            f"(scanned {scanned} of {total} catalogue matches)"
+        )
+    csw_page_label.value = label
+    csw_page_label.visible = True
     csw_prev_button.visible = True
     csw_next_button.visible = True
-    csw_prev_button.disabled = start <= 1
-    csw_next_button.disabled = (start + CSW_PAGE_SIZE) > total
+    csw_prev_button.disabled = _csw_index <= 0
+    # More pages exist if we've already computed later ones, or this page did
+    # not exhaust the catalogue result set.
+    csw_next_button.disabled = page["end"] and _csw_index >= len(_csw_pages) - 1
 
 
-def _load_csw_page(startposition):
-    """Fetch one CSW page, resolve featureType for just those records, show it."""
-    if _csw_state["csw"] is None:
-        return
-    csw_error_pane.visible = False
-    csw_output.value = "Loading results…\n"
-    csw_output.visible = True
-    try:
-        records, results = get_page(
-            _csw_state["csw"], _csw_state["filter"],
-            startposition=startposition, pagesize=CSW_PAGE_SIZE,
-        )
-    except Exception as exc:
-        csw_error_pane.object = f"CSW query failed: {exc}"
-        csw_error_pane.visible = True
-        csw_output.visible = False
-        return
+def _compute_page(start_cursor, offset):
+    """Build a page dict by collecting up to CSW_PAGE_SIZE featureType records."""
+    records, next_cursor, end, matches = collect_page(
+        _csw_state["csw"], _csw_state["filter"],
+        start_cursor=start_cursor, page_size=CSW_PAGE_SIZE, fetch_size=CSW_PAGE_SIZE, probe=True,
+    )
+    _csw_state["matches"] = matches
+    return {"records": records, "start": start_cursor, "next": next_cursor, "end": end, "offset": offset}
 
-    _csw_state["startposition"] = startposition
-    _csw_state["matches"] = int(results.get("matches", 0) or 0)
-    _csw_state["returned"] = int(results.get("returned", len(records)) or 0)
 
-    # Resolve featureType for this page only (record metadata first, dataset
-    # probe as fallback); keep just the records that have one.
-    matched = []
-    for record in records:
-        ft = resolve_feature_type(record, probe=True)
-        if ft:
-            record.feature_type = ft
-            matched.append(record)
-
-    _show_results(matched)
-    _update_pagination()
-    if not matched:
-        csw_output.value = "No records with a featureType on this page — try Next.\n"
-        csw_output.visible = True
-    else:
-        csw_output.visible = False
+def _show_page(index):
+    page = _csw_pages[index]
+    _show_results(page["records"])
+    _update_pagination(page)
 
 
 def process_query(event):
@@ -435,6 +433,7 @@ def process_query(event):
     Args:
         event: Panel click event (ignored; present to wire up as a callback).
     """
+    global _csw_pages, _csw_index
     csw_error_pane.visible = False
     csw_output.value = "Searching catalogue…\n"
     csw_output.visible = True
@@ -450,22 +449,38 @@ def process_query(event):
     try:
         _csw_state["csw"] = connect(endpoint)
         _csw_state["filter"] = build_filter(text=text, bbox=bbox, start=start, stop=stop)
+        page = _compute_page(1, 0)
     except Exception as exc:
         csw_error_pane.object = f"CSW query failed: {exc}"
         csw_error_pane.visible = True
         csw_output.visible = False
         return
-    _load_csw_page(1)
+    _csw_pages = [page]
+    _csw_index = 0
+    csw_output.visible = False
+    _show_page(0)
 
 
 def next_csw_page(event):
-    """Load the next page of CSW results."""
-    _load_csw_page(_csw_state["startposition"] + CSW_PAGE_SIZE)
+    """Show the next page, computing (refilling) it on demand."""
+    global _csw_index
+    if _csw_index < len(_csw_pages) - 1:
+        _csw_index += 1
+    else:
+        last = _csw_pages[_csw_index]
+        if last["end"]:
+            return
+        _csw_pages.append(_compute_page(last["next"], last["offset"] + len(last["records"])))
+        _csw_index += 1
+    _show_page(_csw_index)
 
 
 def prev_csw_page(event):
-    """Load the previous page of CSW results."""
-    _load_csw_page(max(1, _csw_state["startposition"] - CSW_PAGE_SIZE))
+    """Show the previous (already-computed) page."""
+    global _csw_index
+    if _csw_index > 0:
+        _csw_index -= 1
+        _show_page(_csw_index)
 
 
 def visualize_selected(event):
@@ -492,7 +507,7 @@ def clear_csw_results(event):
     Args:
         event: Panel click event (ignored; present to wire up as a callback).
     """
-    global _csw_records
+    global _csw_records, _csw_pages, _csw_index
     csw_output.value = ""
     csw_output.visible = False
     csw_error_pane.visible = False
@@ -502,7 +517,9 @@ def clear_csw_results(event):
     csw_prev_button.visible = False
     csw_next_button.visible = False
     _csw_records = []
-    _csw_state.update(csw=None, filter=None, startposition=1, matches=0, returned=0)
+    _csw_pages = []
+    _csw_index = -1
+    _csw_state.update(csw=None, filter=None, matches=0)
 
 
 def reset_csw_endpoint(event):

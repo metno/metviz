@@ -223,6 +223,64 @@ def get_page(csw, filter_list, *, startposition: int = 1, pagesize: int = 10):
     return records, dict(csw.results)
 
 
+def collect_page(
+    csw,
+    filter_list,
+    *,
+    start_cursor: int = 1,
+    page_size: int = 10,
+    fetch_size: int = 10,
+    probe: bool = True,
+):
+    """Scan CSW from *start_cursor*, keeping records that resolve to a
+    featureType, until *page_size* are collected or the result set is exhausted.
+
+    This "fetch-and-refill" loop lets the UI show full pages of usable datasets
+    without probing the entire match set up front: it pulls *fetch_size* records
+    at a time and resolves featureType (metadata first, dataset probe fallback)
+    only for what it consumes.
+
+    Returns ``(records, next_cursor, end, matches)``:
+
+    - ``records``: up to *page_size* :class:`CswRecord` with ``feature_type`` set,
+    - ``next_cursor``: CSW ``startposition`` to resume from for the next page,
+    - ``end``: ``True`` when the CSW result set has been fully scanned,
+    - ``matches``: the CSW total match count (NOT the featureType-filtered count,
+      which is unknown until ``end`` is reached).
+    """
+    matched: list[CswRecord] = []
+    cursor = start_cursor
+    matches = 0
+    end = False
+
+    while len(matched) < page_size and not end:
+        records, results = get_page(csw, filter_list, startposition=cursor, pagesize=fetch_size)
+        matches = int(results.get("matches", 0) or 0)
+        returned = len(records)
+        if returned == 0:
+            end = True
+            break
+
+        filled = False
+        for offset_in_chunk, record in enumerate(records):
+            ft = resolve_feature_type(record, probe=probe)
+            if ft:
+                record.feature_type = ft
+                matched.append(record)
+                if len(matched) >= page_size:
+                    # Resume the next page right after this record.
+                    cursor += offset_in_chunk + 1
+                    filled = True
+                    break
+
+        if not filled:
+            cursor += returned
+            if returned < fetch_size or cursor > matches:
+                end = True
+
+    return matched, cursor, end, matches
+
+
 def search(
     endpoint: str,
     *,

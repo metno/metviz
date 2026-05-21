@@ -4,6 +4,7 @@ import pytest
 from common.csw import (
     CswRecord,
     build_filter,
+    collect_page,
     extract_opendap_url,
     feature_type_from_record,
     get_page,
@@ -39,6 +40,19 @@ def test_get_page_passes_paging_params_and_converts_records():
     assert [r.identifier for r in records] == ["a", "b"]
     assert all(isinstance(r, CswRecord) for r in records)
     assert results["matches"] == 42 and results["returned"] == 2
+
+
+def test_collect_page_keeps_only_featuretype_records_and_terminates():
+    # The fake returns 2 records (one with a featureType keyword, one without)
+    # and a short chunk, so the scan ends after one fetch.
+    csw = _FakeCsw()
+    records, next_cursor, end, matches = collect_page(
+        csw, [], start_cursor=1, page_size=10, fetch_size=10, probe=False
+    )
+    assert [r.identifier for r in records] == ["a"]
+    assert records[0].feature_type == "timeseries"
+    assert end is True          # chunk shorter than fetch_size -> exhausted
+    assert matches == 42        # CSW total, not the filtered count
 
 
 def test_build_filter_single_text_term_not_wrapped_in_or():
