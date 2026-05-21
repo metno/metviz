@@ -53,6 +53,19 @@
   .warn li::marker { content: "⚠️ "; }
   .fair b { color: var(--brand-2); }
 
+  /* convention-driven pipeline diagram */
+  .flow { display: flex; align-items: stretch; gap: .5rem; flex-wrap: wrap; margin: .6rem 0 1.2rem; }
+  .flow .step {
+    flex: 1 1 0; min-width: 150px; background: #eef5f8; border: 1px solid var(--line);
+    border-top: 4px solid var(--brand-2); border-radius: 10px; padding: .8rem 1rem;
+    font-weight: 700; color: var(--brand); font-size: clamp(.85rem, 1.5vw, 1.15rem);
+    display: flex; flex-direction: column; justify-content: center;
+  }
+  .flow .step small { display: block; font-weight: 400; color: var(--muted); margin-top: .3rem; font-size: .8em; }
+  .flow .step b { color: var(--brand-2); }
+  .flow .arrow { align-self: center; color: var(--brand-2); font-size: 1.7rem; font-weight: 700; }
+  .silver { font-size: clamp(1.1rem, 2.2vw, 1.7rem); font-weight: 700; }
+
   .title-slide { background: linear-gradient(150deg, var(--brand-deep) 0%, var(--brand) 55%, var(--brand-2) 120%); color: #fff; }
   .title-slide h1, .title-slide h2 { color: #fff; }
   .title-slide .sub { color: #cfe6ee; }
@@ -157,6 +170,38 @@
       <li>Result: <strong>no per-dataset programming.</strong> Good metadata = instant usability.</li>
     </ul>
     <div class="notes"><b>Say:</b> A field called "featureType" literally chooses the right chart. When metadata is rich, the tool just works. When it isn't, the tool can't help — which is a powerful diagnostic.</div>
+  </section>
+
+  <!-- 5b — the pitch -->
+  <section class="slide title-slide">
+    <div class="kicker">What makes it unique</div>
+    <h2>From data to interactive product — in zero steps</h2>
+    <ul>
+      <li>A standards-compliant dataset is <strong>already</strong> a product: point at its link, and the app builds the controls and the plot itself.</li>
+      <li>No download. No format wrangling. No bespoke plotting code. No custom interface.</li>
+    </ul>
+    <p class="silver">Data to science — served on a silver plate.</p>
+    <div class="notes"><b>Say:</b> This is the pitch. Everywhere else, turning a dataset into an interactive product is days of bespoke work — download, parse, write plotting code, build a UI. Here it's a single link, because the metadata already says everything the software needs.</div>
+  </section>
+
+  <!-- 5c — the data model / pipeline -->
+  <section class="slide">
+    <div class="kicker">The data model</div>
+    <h2>One convention-driven pipeline — not custom code per dataset</h2>
+    <div class="flow">
+      <div class="step">Data link<small>OPeNDAP / NetCDF</small></div>
+      <div class="arrow">→</div>
+      <div class="step">Open as a standard dataset<small>xarray</small></div>
+      <div class="arrow">→</div>
+      <div class="step">Read <b>featureType</b><small>CF convention</small></div>
+      <div class="arrow">→</div>
+      <div class="step">The right view, automatically<small>time series · profile · trajectory</small></div>
+    </div>
+    <ul>
+      <li>Variables, axes, labels and units come straight from <strong>CF metadata</strong>; quality-flag variables are auto-excluded.</li>
+      <li>Add a compliant dataset → get a working, interactive product. <strong>No per-dataset programming.</strong></li>
+    </ul>
+    <div class="notes"><b>Say:</b> Here's why "zero steps" is real, not a slogan. One pipeline: validate the link, open the data, read the featureType, and the convention tells us which interactive view to build. The dataset's own metadata drives everything — variables, axes, labels, even which charts make sense.</div>
   </section>
 
   <!-- 6 -->
