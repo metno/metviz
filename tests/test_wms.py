@@ -87,6 +87,22 @@ def test_wmsloader_resolve_crs_used_for_picked_crs(monkeypatch):
     assert added[0].crs == sentinel_crs
 
 
+def test_wmsloader_on_add_receives_layer_instead_of_map(monkeypatch):
+    monkeypatch.setattr(
+        "common.wms.list_layers", lambda url: ([("temp", "T")], "1.1.1", "Demo", ["EPSG:4326"])
+    )
+    map_added = []
+    hooked = []
+    fake_map = SimpleNamespace(add_layer=map_added.append)
+    loader = WmsLoader(get_map=lambda: fake_map, on_add=lambda layer, name: hooked.append((layer, name)))
+    loader.url_input.value = "http://example.org/wms"
+    loader.load()
+    loader.layer_select.value = ["temp"]
+    loader.add_selected()
+    assert map_added == []                 # on_add owns placement now
+    assert len(hooked) == 1 and hooked[0][1] == "temp"
+
+
 def test_wmsloader_resolve_crs_none_shows_message_and_skips(monkeypatch):
     monkeypatch.setattr(
         "common.wms.list_layers", lambda url: ([("temp", "T")], "1.1.1", "Demo", ["EPSG:32662"])
