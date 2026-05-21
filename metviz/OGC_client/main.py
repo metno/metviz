@@ -341,7 +341,9 @@ for _csw_field in _CSW_FIELDS.values():
 csw_storage.param.watch(_restore_csw_inputs, "value")
 
 
-csw_dialog = pn.Column(
+# Search inputs go in a collapsible Card (collapsed after a search to save space);
+# results live separately so they can sit in their own panel below the map.
+search_card = pn.Card(
     csw_storage,
     pn.Row(csw_url_input, csw_url_reset_button),
     pn.Row(csw_anytext_input, csw_anytext_reset_button),
@@ -349,14 +351,18 @@ csw_dialog = pn.Column(
     pn.Row(csw_datetime_picker_start, csw_datetime_picker_end, csw_datetime_reset_button),
     pn.Row(csw_query_button, csw_clear_button),
     csw_error_pane,
+    title="CSW Search",
+    collapsible=True,
+    collapsed=False,
+    sizing_mode="stretch_width",
+)
+
+results_panel = pn.Column(
     csw_output,
     csw_results_table,
     pn.Row(csw_prev_button, csw_page_label, csw_next_button),
     csw_flyto_button,
-    visible=True,
-    margin=(10, 10),
-    sizing_mode="stretch_width",
-    styles=dict(background='WhiteSmoke'),
+    sizing_mode="stretch_both",
 )
 
 
@@ -613,6 +619,8 @@ def process_query(event):
     _csw_index = 0
     csw_output.visible = False
     _show_page(0)
+    # Collapse the search form to make room for the results/plot.
+    search_card.collapsed = True
 
 
 def next_csw_page(event):
@@ -714,7 +722,7 @@ def toggle_csw_dialog(event):
     Args:
         event: Panel widget change event (ignored; used as a watcher callback).
     """
-    csw_dialog.visible = csw_toggle.value
+    search_card.visible = csw_toggle.value
 
 
 csw_toggle.param.watch(toggle_csw_dialog, 'value')
@@ -1112,65 +1120,55 @@ toolbar = pn.Row(
 
 toolbar.visible = False
 
-side_opt = pn.Column(edit_panel,
-          csw_dialog,
-          wms_dialog)
-# Show the side panel by default; the toggle buttons that used to control it are
-# hidden for now (only the CSW loader is wired up).
+# Legacy scaffolding kept defined for the (currently hidden) WMS / marker
+# features; not shown in the current layout.
+side_opt = pn.Column(edit_panel, wms_dialog)
 side_opt.visible = True
 
 
 def show_hide_side_opt_widget(event):
-    print(side_opt.visible)
-    for i in pn.state.session_args:
-        print(i, pn.state.session_args[i])
-    if side_opt.visible:
-        side_opt.visible = False
-        toolbar.visible = False
-    else:
-        side_opt.visible = True
-        toolbar.visible = True
+    visible = not side_opt.visible
+    side_opt.visible = visible
+    toolbar.visible = visible
 
 
-
-
-show_options_button = Button(
-        label="show opt",
-        height=30,
-        width=120,
-        visible=False,
-)
+show_options_button = Button(label="show opt", height=30, width=120, visible=False)
 show_options_button.on_click(show_hide_side_opt_widget)
 
-component = pn.Column(
-    pn.Row(show_options_button, toolbar),
-    pn.Row(
-        layer_manager_widget,
-        pn.Column(
-            pn.panel(lmap, sizing_mode="stretch_both", min_height=500),
-            pn.Row(lon_label, lat_label, width=450),
-            pn.Row(add_marker_checkbox, json_widget),
-        ),
-        side_opt,
-        height_policy="max",
-        sizing_mode="stretch_both",
-    ),
-    pn.layout.Divider(),
-    # Inline plot of the selected search result.
+
+# --- Layout: React template (resizable, draggable grid) ----------------------
+# The CSW search lives in the (collapsible) sidebar. The main area is a 12-column
+# react-grid where map and plot sit side by side and the results table spans the
+# full width below — each grid card can be dragged/resized to adjust the view.
+map_card = pn.Card(
+    pn.panel(lmap, sizing_mode="stretch_both", min_height=380),
+    pn.Row(lon_label, lat_label),
+    title="Map",
+    collapsible=False,
+    margin=0,
+    sizing_mode="stretch_both",
+)
+plot_card = pn.Card(
     plot_panel.layout,
+    title="Plot",
+    collapsible=False,
+    margin=0,
+    sizing_mode="stretch_both",
+)
+results_card = pn.Card(
+    results_panel,
+    title="Results",
+    collapsible=False,
+    margin=0,
     sizing_mode="stretch_both",
 )
 
-
-# template = pn.template.BootstrapTemplate(
-#     site=" ADC NC-CF Data Visualization ",
-#     # site_url="https://www.northwestknowledge.net/adc/",
-#     favicon="/assets/ADC_logo.png",
-#     title="OGC Map Widget Demo",
-#     logo="/assets/ADC_logo.png",
-#     header_background=ACCENT_BASE_COLOR,
-#     #accent_base_color=ACCENT_BASE_COLOR,
-#     main=[component],
-# ).servable()
-
-component.servable()
+template = pn.template.ReactTemplate(
+    title="OGC Catalogue Explorer",
+    sidebar=[search_card],
+    sidebar_width=380,
+)
+template.main[0:6, 0:6] = map_card
+template.main[0:6, 6:12] = plot_card
+template.main[6:11, 0:12] = results_card
+template.servable()
