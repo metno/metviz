@@ -57,20 +57,51 @@ def test_wmsloader_load_populates_picker(monkeypatch):
     assert loader.crs_options == ["EPSG:4326"]
 
 
-def test_wmsloader_on_layer_crs_called_before_add(monkeypatch):
+def test_wmsloader_load_populates_crs_picker_and_default(monkeypatch):
     monkeypatch.setattr(
-        "common.wms.list_layers", lambda url: ([("temp", "Temperature")], "1.3.0", "Demo", ["EPSG:4326"])
+        "common.wms.list_layers",
+        lambda url: ([("temp", "T")], "1.1.1", "Demo", ["EPSG:32661", "EPSG:4326", "EPSG:5041"]),
     )
-    seen = []
-    added = []
-    fake_map = SimpleNamespace(add_layer=added.append)
-    loader = WmsLoader(get_map=lambda: fake_map, on_layer_crs=seen.append)
+    loader = WmsLoader(get_map=lambda: None)
     loader.url_input.value = "http://example.org/wms"
     loader.load()
+    assert list(loader.crs_select.options) == ["EPSG:32661", "EPSG:4326", "EPSG:5041"]
+    assert loader.crs_select.value == "EPSG:4326"  # prefers 4326 when available
+    assert loader.crs_select.visible
+
+
+def test_wmsloader_resolve_crs_used_for_picked_crs(monkeypatch):
+    monkeypatch.setattr(
+        "common.wms.list_layers", lambda url: ([("temp", "T")], "1.1.1", "Demo", ["EPSG:4326", "EPSG:32661"])
+    )
+    added = []
+    fake_map = SimpleNamespace(add_layer=added.append)
+    sentinel_crs = {"name": "EPSG:32661"}
+    loader = WmsLoader(get_map=lambda: fake_map, resolve_crs=lambda epsg: sentinel_crs)
+    loader.url_input.value = "http://example.org/wms"
+    loader.load()
+    loader.crs_select.value = "EPSG:32661"
     loader.layer_select.value = ["temp"]
     loader.add_selected()
-    assert seen == [["EPSG:4326"]]   # hook got the supported CRS list
     assert len(added) == 1
+    assert added[0].crs == sentinel_crs
+
+
+def test_wmsloader_resolve_crs_none_shows_message_and_skips(monkeypatch):
+    monkeypatch.setattr(
+        "common.wms.list_layers", lambda url: ([("temp", "T")], "1.1.1", "Demo", ["EPSG:32662"])
+    )
+    added = []
+    fake_map = SimpleNamespace(add_layer=added.append)
+    loader = WmsLoader(get_map=lambda: fake_map, resolve_crs=lambda epsg: None)
+    loader.url_input.value = "http://example.org/wms"
+    loader.load()
+    loader.crs_select.value = "EPSG:32662"
+    loader.layer_select.value = ["temp"]
+    loader.add_selected()
+    assert added == []            # nothing added for an unsupported CRS
+    assert loader.error.visible   # message shown
+    assert loader.layer_select.visible  # pickers stay so user can choose again
 
 
 def test_wmsloader_load_empty_url_shows_error():

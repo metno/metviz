@@ -61,24 +61,25 @@ class WmsLoader:
         map rebuilds / projection switches.
     get_crs : callable -> crs, optional
         Returns the CRS for added layers (default: the map's current ``crs``,
-        else EPSG4326). The WMS server must actually support that CRS.
-    on_layer_crs : callable(list[str]) -> None, optional
-        Called just before layers are added, with the WMS's supported EPSG
-        codes. The app can use it to switch the map to a matching projection;
-        ``get_map``/``get_crs`` are read *after* it returns, so they reflect any
-        switch.
+        else EPSG4326). Used only when *resolve_crs* is not given.
+    resolve_crs : callable(str) -> crs | None, optional
+        Given the EPSG code the user picked from the CRS dropdown, return the
+        ipyleaflet CRS to add the layer with (and switch the map to a matching
+        projection as a side effect), or ``None`` if no map supports that CRS.
+        When ``None`` is returned the layer is not added and a message is shown.
     """
 
-    def __init__(self, *, get_map, get_crs=None, on_layer_crs=None):
+    def __init__(self, *, get_map, get_crs=None, resolve_crs=None):
         self._get_map = get_map
         self._get_crs = get_crs
-        self._on_layer_crs = on_layer_crs
+        self._resolve_crs = resolve_crs
         self.crs_options: list[str] = []
         self.url_input = pn.widgets.TextInput(name="WMS GetCapabilities URL", placeholder="Enter WMS URL")
         self.load_button = pn.widgets.Button(name="Load capabilities", button_type="success")
         self.error = pn.pane.Alert("", alert_type="danger", visible=False)
         self.layers_md = pn.pane.Markdown("", sizing_mode="stretch_width", visible=False)
         self.layer_select = pn.widgets.CheckBoxGroup(name="Available layers", options=[], visible=False)
+        self.crs_select = pn.widgets.Select(name="CRS", options=[], visible=False)
         self.add_button = pn.widgets.Button(name="Add selected layer(s)", button_type="primary", visible=False)
         self.load_button.on_click(self.load)
         self.add_button.on_click(self.add_selected)
@@ -88,6 +89,7 @@ class WmsLoader:
             self.error,
             self.layers_md,
             self.layer_select,
+            self.crs_select,
             self.add_button,
             sizing_mode="stretch_width",
         )
@@ -97,6 +99,7 @@ class WmsLoader:
         self.error.visible = True
         self.layers_md.visible = False
         self.layer_select.visible = False
+        self.crs_select.visible = False
         self.add_button.visible = False
 
     def load(self, event=None) -> None:
@@ -119,20 +122,39 @@ class WmsLoader:
         )
         # options as {label: value} so the checkbox value is the layer name.
         self.layer_select.options = {(f"{name}: {ttl}" if ttl else name): name for name, ttl in layers}
+        self.crs_select.options = crs
+        self.crs_select.value = "EPSG:4326" if "EPSG:4326" in crs else (crs[0] if crs else None)
         self.layers_md.visible = True
         self.layer_select.visible = True
+        self.crs_select.visible = bool(crs)
         self.add_button.visible = True
 
     def add_selected(self, event=None) -> None:
-        """Add the checked layers to the map using the current CRS."""
+        """Add the checked layers to the map using the picked CRS.
+
+        With *resolve_crs*, the picked EPSG code decides both the CRS and which
+        map projection the layer goes to; an unsupported pick shows a message
+        and adds nothing.
+        """
         url = self.url_input.value.strip()
         names = self.layer_select.value
         if not url or not names:
             return
         getmap_url = wms_base_url(url)
-        if self._on_layer_crs is not None:
-            self._on_layer_crs(self.crs_options)
-        crs = self._get_crs() if self._get_crs is not None else projections.EPSG4326
+        if self._resolve_crs is not None:
+            chosen = self.crs_select.value
+            crs = self._resolve_crs(chosen)
+            if crs is None:
+                # Keep the pickers visible so the user can choose another CRS.
+                self.error.object = (
+                    f"No map projection available for {chosen}. "
+                    "Pick EPSG:4326, EPSG:3857, or UPS North (EPSG:32661/5041)."
+                )
+                self.error.visible = True
+                return
+        else:
+            crs = self._get_crs() if self._get_crs is not None else projections.EPSG4326
+        self.error.visible = False
         lmap = self._get_map()
         for name in names:
             lmap.add_layer(

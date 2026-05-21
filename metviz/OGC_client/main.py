@@ -92,7 +92,7 @@ wms_toggle = pn.widgets.Toggle(name="Show WMS Loader", button_type="primary", va
 wms_loader = WmsLoader(
     get_map=lambda: lmap,
     get_crs=lambda: lmap.crs,
-    on_layer_crs=lambda crs: _wms_choose_projection(crs),
+    resolve_crs=lambda epsg: _resolve_wms_crs(epsg),
 )
 # Shown in the detail card when the search source is WMS (swapped in by
 # _on_source_change), so it stays visible; not placed in any layout otherwise.
@@ -1253,17 +1253,29 @@ show_options_button.on_click(show_hide_side_opt_widget)
 # ipyleaflet's CRS is fixed at construction, so switching projection means
 # building a fresh Map and re-applying the overlays.
 _MERCATOR = "Web Mercator"
-_POLAR = "North Polar Stereographic"
+_POLAR = "UPS North"
 _WGS84 = "WGS84 (lat/lon)"
 
-# North-polar-stereographic CRS + GEBCO basemap (carried over from the TRJ app).
+# UPS North (EPSG:5041 / 32661) CRS using the canonical GIBS polar tile matrix
+# set, so WMS layers picked as UPS North render here. Many polar WMS services
+# (e.g. adc-wms.met.no) advertise EPSG:32661/5041.
 _POLAR_CRS = {
-    "name": "EPSG:3996",
+    "name": "EPSG:5041",
     "custom": True,
-    "proj4def": "+proj=stere +lat_0=90 +lat_ts=75 +lon_0=0 +x_0=0 +y_0=0 +datum=WGS84 +units=m +no_defs +type=crs",
-    "origin": [0.0, -1935824.39],
-    "bounds": [[-3333793.82, -3368075.98], [3333793.82, 3368075.98]],
-    "resolutions": [16384.0, 8192.0, 4096.0, 2048.0, 1024.0, 512.0, 256.0],
+    "proj4def": "+proj=stere +lat_0=90 +lat_ts=90 +lon_0=0 +k=0.994 +x_0=2000000 +y_0=2000000 +datum=WGS84 +units=m +no_defs",
+    "origin": [-9036842.762500001, 9036842.762500001],
+    "bounds": [[-9036842.762500001, -9036842.762500001], [9036842.762500001, 9036842.762500001]],
+    "resolutions": [
+        238810.813354,
+        119405.406677,
+        59702.7033384999,
+        29851.3516692501,
+        14925.675834625,
+        7462.83791731252,
+        3731.41895865639,
+        1865.70947932806,
+        932.854739664032,
+    ],
 }
 
 
@@ -1329,10 +1341,13 @@ def _rebuild_map(projection):
 # One tab per projection; the single map is shown in the active tab and rebuilt
 # in that projection when the tab changes.
 _PROJECTIONS = [_MERCATOR, _POLAR, _WGS84]
-# EPSG code each projection requests from a WMS. The polar tab's custom
-# EPSG:3996 is never advertised by WMS servers, so it has no entry and is never
-# auto-matched.
-_PROJECTION_EPSG = {_MERCATOR: "EPSG:3857", _WGS84: "EPSG:4326"}
+# EPSG codes each projection tab can render. A WMS layer is added to the tab
+# whose codes include the user's picked CRS.
+_PROJECTION_EPSG = {
+    _MERCATOR: {"EPSG:3857", "EPSG:900913"},
+    _POLAR: {"EPSG:5041", "EPSG:32661"},
+    _WGS84: {"EPSG:4326", "CRS:84"},
+}
 _proj_tab_holders = [pn.Column(sizing_mode="stretch_both") for _ in _PROJECTIONS]
 projection_tabs = pn.Tabs(
     *zip(_PROJECTIONS, _proj_tab_holders, strict=True), sizing_mode="stretch_both"
@@ -1356,22 +1371,26 @@ def _set_projection(projection):
         projection_tabs.active = index  # fires the watcher -> _apply_projection
 
 
-def _wms_choose_projection(crs_codes):
-    """Pick the map projection for a WMS from its supported CRS list.
+# ipyleaflet CRS for each projection tab (must match the map built in _make_map).
+_PROJECTION_LEAFLET_CRS = {
+    _MERCATOR: projections.EPSG3857,
+    _POLAR: _POLAR_CRS,
+    _WGS84: projections.EPSG4326,
+}
 
-    Keep the current tab if the WMS supports its CRS; otherwise prefer WGS84
-    (EPSG:4326), then Web Mercator (EPSG:3857). If none match, leave the map as
-    is — most polar services support EPSG:4326.
+
+def _resolve_wms_crs(epsg):
+    """Map a user-picked WMS CRS to a tab, switch to it, and return its CRS.
+
+    Returns the ipyleaflet CRS for the matching projection tab (switching the
+    map to it), or ``None`` if no tab renders *epsg* (caller shows a message).
     """
-    codes = {str(c).upper() for c in crs_codes}
-    current = _PROJECTIONS[projection_tabs.active]
-    current_epsg = _PROJECTION_EPSG.get(current)
-    if current_epsg and current_epsg in codes:
-        return
-    if "EPSG:4326" in codes:
-        _set_projection(_WGS84)
-    elif "EPSG:3857" in codes:
-        _set_projection(_MERCATOR)
+    code = str(epsg).upper()
+    for projection, codes in _PROJECTION_EPSG.items():
+        if code in codes:
+            _set_projection(projection)
+            return _PROJECTION_LEAFLET_CRS[projection]
+    return None
 
 
 # --- Layout: React template (resizable, draggable grid) ----------------------
