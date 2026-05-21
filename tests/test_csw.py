@@ -106,6 +106,20 @@ def test_build_filter_empty_query():
     assert build_filter() == []
 
 
+def test_build_filter_require_only():
+    # A lone required AnyText term is one un-wrapped constraint.
+    result = build_filter(require=["WMS"])
+    assert len(result) == 1
+    assert isinstance(result[0], fes.PropertyIsLike)
+
+
+def test_build_filter_require_is_anded_with_text():
+    # text OR-group AND the required "WMS" term -> a single And of two operands.
+    result = build_filter(text="sentinel", require=["WMS"])
+    assert len(result) == 1
+    assert isinstance(result[0], fes.And)
+
+
 @pytest.mark.parametrize(
     "text, expected",
     [
