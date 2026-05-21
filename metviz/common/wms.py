@@ -8,9 +8,30 @@ so the loader keeps working across map rebuilds / projection switches.
 
 from __future__ import annotations
 
+from urllib.parse import parse_qsl, urlencode, urlparse, urlunparse
+
 import owslib.wms
 import panel as pn
 from ipyleaflet import WMSLayer, projections
+
+# WMS request-control params that belong to a specific operation (e.g. a
+# GetCapabilities link). They must be stripped from the base URL before it is
+# handed to a WMSLayer, which appends its own GetMap params.
+_WMS_CONTROL_PARAMS = {"service", "request", "version"}
+
+
+def wms_base_url(url: str) -> str:
+    """Strip GetCapabilities/GetMap control params, keeping the service base.
+
+    A catalogue often advertises a WMS as a GetCapabilities URL
+    (``…/wms?SERVICE=WMS&REQUEST=GetCapabilities``). Passed straight to a
+    WMSLayer that becomes a broken GetMap (``REQUEST=GetCapabilities`` lingers),
+    so the server returns XML instead of an image. Drop the control params but
+    keep any others (e.g. an access token).
+    """
+    parts = urlparse(url)
+    kept = [(k, v) for k, v in parse_qsl(parts.query) if k.lower() not in _WMS_CONTROL_PARAMS]
+    return urlunparse(parts._replace(query=urlencode(kept)))
 
 
 def list_layers(url: str):
@@ -96,9 +117,10 @@ class WmsLoader:
         names = self.layer_select.value
         if not url or not names:
             return
+        getmap_url = wms_base_url(url)
         crs = self._get_crs() if self._get_crs is not None else projections.EPSG4326
         lmap = self._get_map()
         for name in names:
             lmap.add_layer(
-                WMSLayer(url=url, layers=name, name=name, crs=crs, transparent=True, format="image/png")
+                WMSLayer(url=getmap_url, layers=name, name=name, crs=crs, transparent=True, format="image/png")
             )

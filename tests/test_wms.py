@@ -1,7 +1,21 @@
 from types import SimpleNamespace
 
-from common.wms import WmsLoader, list_layers
+from common.wms import WmsLoader, list_layers, wms_base_url
 from ipyleaflet import projections
+
+
+def test_wms_base_url_strips_getcapabilities_control_params():
+    assert (
+        wms_base_url("https://adc-wms.met.no/get_wms/abc/wms?SERVICE=WMS&REQUEST=GetCapabilities")
+        == "https://adc-wms.met.no/get_wms/abc/wms"
+    )
+    # keeps non-control params (e.g. an access token), drops service/request/version
+    assert (
+        wms_base_url("https://x/wms?service=WMS&request=GetCapabilities&version=1.3.0&token=abc")
+        == "https://x/wms?token=abc"
+    )
+    # a bare endpoint is unchanged
+    assert wms_base_url("https://x/wms") == "https://x/wms"
 
 
 class _FakeLayer:
