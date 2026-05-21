@@ -48,7 +48,15 @@ import pandas as pd
 import panel as pn
 from bokeh.models import Button
 from common.browser_storage import BrowserStorage
-from common.csw import CswRecord, build_filter, collect_page, connect, parse_bbox
+from common.csw import (
+    CswRecord,
+    build_filter,
+    collect_page,
+    connect,
+    keep_with_feature_type,
+    keep_with_wms,
+    parse_bbox,
+)
 from common.data import load_data
 from common.plot_panel import DatasetPlotPanel
 from common.trajectory import nearest_index_for_time, track_bounds, track_points
@@ -71,8 +79,9 @@ ACCENT_BASE_COLOR = "#003366"
 # it works across projection switches.
 wms_toggle = pn.widgets.Toggle(name="Show WMS Loader", button_type="primary", value=False, visible=False)
 wms_loader = WmsLoader(get_map=lambda: lmap, get_crs=lambda: lmap.crs)
+# Shown in the detail card when the search source is WMS (swapped in by
+# _on_source_change), so it stays visible; not placed in any layout otherwise.
 wms_dialog = wms_loader.layout
-wms_dialog.visible = False
 
 
 def toggle_wms_dialog(event):
@@ -251,10 +260,24 @@ for _csw_field in _CSW_FIELDS.values():
 csw_storage.param.watch(_restore_csw_inputs, "value")
 
 
+# Source toggle: search for OPeNDAP datasets (plot) or WMS-backed records
+# (add as a map layer). Switches both the result filter and the select action.
+SOURCE_OPENDAP = "OPeNDAP (plot)"
+SOURCE_WMS = "WMS (map layer)"
+source_select = pn.widgets.RadioButtonGroup(
+    name="Source", options=[SOURCE_OPENDAP, SOURCE_WMS], value=SOURCE_OPENDAP
+)
+
+
+def _wms_mode() -> bool:
+    return source_select.value == SOURCE_WMS
+
+
 # Search inputs go in a collapsible Card (collapsed after a search to save space);
 # results live separately so they can sit in their own panel below the map.
 search_card = pn.Card(
     csw_storage,
+    source_select,
     pn.Row(csw_url_input, csw_url_reset_button),
     pn.Row(csw_anytext_input, csw_anytext_reset_button),
     pn.Row(csw_bbox_label, csw_bbox_reset_button),
@@ -417,21 +440,19 @@ def _show_results(records):
         csw_results_table.visible = False
         csw_flyto_button.visible = False
         return
-    csw_results_table.value = pd.DataFrame(
-        [
-            {
-                "title": r.title,
-                "featureType": r.feature_type,
-                "link": (
-                    f'<a href="{r.opendap_url}" target="_blank" rel="noopener" '
-                    'title="Open OPeNDAP URL">🔗</a>'
-                    if r.opendap_url else ""
-                ),
-            }
-            for r in records
-        ],
-        columns=["title", "featureType", "link"],
-    )
+    wms = _wms_mode()
+    rows = []
+    for r in records:
+        url = r.wms_url if wms else r.opendap_url
+        rows.append({
+            "title": r.title,
+            "featureType": r.feature_type or ("WMS" if wms and r.wms_url else ""),
+            "link": (
+                f'<a href="{url}" target="_blank" rel="noopener" title="Open source URL">🔗</a>'
+                if url else ""
+            ),
+        })
+    csw_results_table.value = pd.DataFrame(rows, columns=["title", "featureType", "link"])
     csw_results_table.selection = []
     csw_results_table.visible = True
     csw_flyto_button.visible = True
@@ -498,11 +519,25 @@ def _highlight_selected(record):
             lmap.add_layer(_csw_highlight)
 
 
+def _update_wms(record):
+    """Load the selected WMS record's GetCapabilities into the WMS layer picker."""
+    _clear_trajectory()
+    plot_panel.clear()
+    if record is None or not record.wms_url:
+        return
+    wms_loader.url_input.value = record.wms_url
+    wms_loader.load()  # fetch capabilities -> populate the layer picker
+
+
 def _on_result_select(event):
-    """On row selection: highlight on the map and update the inline plot."""
+    """On row selection: highlight on the map, then plot (OPeNDAP) or load the
+    WMS layer picker (WMS), depending on the search source."""
     record = _selected_record()
     _highlight_selected(record)
-    _update_plot(record)
+    if _wms_mode():
+        _update_wms(record)
+    else:
+        _update_plot(record)
 
 
 # Zoom level used when flying to a record (2 levels further out than before).
@@ -530,16 +565,17 @@ def _update_pagination(page):
     offset = page["offset"]
     total = _csw_state["matches"]
     scanned = page["next"] - 1
+    kind = "WMS records" if _wms_mode() else "datasets with a featureType"
     if n == 0:
-        label = f"No datasets with a featureType (scanned all {total} catalogue matches)"
+        label = f"No {kind} (scanned all {total} catalogue matches)"
     elif page["end"]:
         label = (
-            f"Showing {offset + 1}–{offset + n} of {offset + n} datasets with a featureType "
+            f"Showing {offset + 1}–{offset + n} of {offset + n} {kind} "
             f"(scanned all {total} catalogue matches)"
         )
     else:
         label = (
-            f"Showing {offset + 1}–{offset + n} datasets with a featureType "
+            f"Showing {offset + 1}–{offset + n} {kind} "
             f"(scanned {scanned} of {total} catalogue matches)"
         )
     csw_page_label.value = label
@@ -553,10 +589,15 @@ def _update_pagination(page):
 
 
 def _compute_page(start_cursor, offset):
-    """Build a page dict by collecting up to CSW_PAGE_SIZE featureType records."""
+    """Build a page dict by collecting up to CSW_PAGE_SIZE matching records.
+
+    The keep predicate depends on the search source: featureType (probe) for
+    OPeNDAP, WMS-protocol (metadata only) for WMS.
+    """
+    keep = keep_with_wms if _wms_mode() else keep_with_feature_type
     records, next_cursor, end, matches = collect_page(
         _csw_state["csw"], _csw_state["filter"],
-        start_cursor=start_cursor, page_size=CSW_PAGE_SIZE, fetch_size=CSW_PAGE_SIZE,
+        start_cursor=start_cursor, page_size=CSW_PAGE_SIZE, fetch_size=CSW_PAGE_SIZE, keep=keep,
     )
     _csw_state["matches"] = matches
     return {"records": records, "start": start_cursor, "next": next_cursor, "end": end, "offset": offset}
@@ -568,13 +609,28 @@ def _show_page(index):
     _update_pagination(page)
 
 
+def _run_search_from_page1():
+    """(Re)load page 1 from the current connection/filter using the current source."""
+    global _csw_pages, _csw_index
+    try:
+        page = _compute_page(1, 0)
+    except Exception as exc:
+        csw_error_pane.object = f"CSW query failed: {exc}"
+        csw_error_pane.visible = True
+        csw_output.visible = False
+        return
+    _csw_pages = [page]
+    _csw_index = 0
+    csw_output.visible = False
+    _show_page(0)
+
+
 def process_query(event):
     """Connect to the CSW, build the space/time/text filter, and load page 1.
 
     Args:
         event: Panel click event (ignored; present to wire up as a callback).
     """
-    global _csw_pages, _csw_index
     csw_error_pane.visible = False
     csw_output.value = "Searching catalogue…\n"
     csw_output.visible = True
@@ -590,18 +646,23 @@ def process_query(event):
     try:
         _csw_state["csw"] = connect(endpoint)
         _csw_state["filter"] = build_filter(text=text, bbox=bbox, start=start, stop=stop)
-        page = _compute_page(1, 0)
     except Exception as exc:
         csw_error_pane.object = f"CSW query failed: {exc}"
         csw_error_pane.visible = True
         csw_output.visible = False
         return
-    _csw_pages = [page]
-    _csw_index = 0
-    csw_output.visible = False
-    _show_page(0)
-    # Collapse the search form to make room for the results/plot.
+    _run_search_from_page1()
+    # Collapse the search form to make room for the results/detail.
     search_card.collapsed = True
+
+
+def _on_source_change(event):
+    """Swap the detail card (plot vs WMS picker) and re-run the search."""
+    detail_pane[:] = [wms_loader.layout if _wms_mode() else plot_panel.layout]
+    plot_panel.clear()
+    _clear_trajectory()
+    if _csw_state["csw"] is not None:
+        _run_search_from_page1()
 
 
 def next_csw_page(event):
@@ -1096,7 +1157,7 @@ toolbar.visible = False
 
 # Legacy scaffolding kept defined for the (currently hidden) WMS / marker
 # features; not shown in the current layout.
-side_opt = pn.Column(edit_panel, wms_dialog)
+side_opt = pn.Column(edit_panel)
 side_opt.visible = True
 
 
@@ -1199,13 +1260,17 @@ map_card = pn.Card(
     margin=0,
     sizing_mode="stretch_both",
 )
+# Detail card content swaps between the inline plot (OPeNDAP) and the WMS layer
+# picker (WMS) as the search source changes.
+detail_pane = pn.Column(plot_panel.layout, sizing_mode="stretch_both")
 plot_card = pn.Card(
-    plot_panel.layout,
-    title="Plot",
+    detail_pane,
+    title="Plot / WMS layers",
     collapsible=False,
     margin=0,
     sizing_mode="stretch_both",
 )
+source_select.param.watch(_on_source_change, "value")
 
 template = pn.template.ReactTemplate(
     title="OGC Catalogue Explorer",
