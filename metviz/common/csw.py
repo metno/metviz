@@ -17,6 +17,7 @@ from dataclasses import dataclass, field
 from owslib import fes
 from owslib.csw import CatalogueServiceWeb
 from owslib.fes import SortBy, SortProperty
+from owslib.iso import MD_Metadata
 
 from .routing import target_app_for  # noqa: F401  (re-exported for callers)
 from .urls import feature_type_from_url
@@ -33,6 +34,10 @@ KNOWN_FEATURE_TYPES = frozenset({
 })
 
 DEFAULT_CRS = "urn:ogc:def:crs:OGC:1.3:CRS84"
+
+# Request ISO 19115/19139 (gmd) records by default — they carry a proper bounding
+# box, keywords and online resources (OPeNDAP links), unlike sparse Dublin Core.
+ISO_OUTPUT_SCHEMA = "http://www.isotc211.org/2005/gmd"
 
 
 @dataclass
@@ -150,27 +155,61 @@ def resolve_feature_type(record: CswRecord, *, probe: bool = True) -> str | None
     return None
 
 
-def _extract_bbox(raw):
-    """Pull a numeric ``(minx, miny, maxx, maxy)`` tuple from a record, or None."""
-    raw_bbox = getattr(raw, "bbox", None)
-    if raw_bbox is None:
+def _bbox_tuple(bbox):
+    """Coerce an object with minx/miny/maxx/maxy into a float tuple, or None."""
+    if bbox is None:
         return None
     try:
-        return (
-            float(raw_bbox.minx), float(raw_bbox.miny),
-            float(raw_bbox.maxx), float(raw_bbox.maxy),
-        )
+        return (float(bbox.minx), float(bbox.miny), float(bbox.maxx), float(bbox.maxy))
     except (TypeError, ValueError, AttributeError):
         return None
 
 
+def _iso_identification(md):
+    idents = getattr(md, "identification", None) or []
+    return idents[0] if idents else None
+
+
+def _iso_keywords(ident):
+    """Flatten an ISO identification's keywords (+ topic categories) to strings."""
+    out: list[str] = []
+    for mdkw in getattr(ident, "keywords", None) or []:
+        for kw in getattr(mdkw, "keywords", None) or []:
+            name = getattr(kw, "name", None) if not isinstance(kw, str) else kw
+            if name:
+                out.append(str(name))
+    out.extend(str(t) for t in (getattr(ident, "topiccategory", None) or []) if t)
+    return out
+
+
+def _iso_references(md):
+    """Map an ISO record's online resources to ``{scheme, url}`` dicts."""
+    dist = getattr(md, "distribution", None)
+    online = (getattr(dist, "online", None) or []) if dist else []
+    return [
+        {"scheme": getattr(res, "protocol", "") or "", "url": getattr(res, "url", "") or ""}
+        for res in online
+    ]
+
+
 def _to_record(raw) -> CswRecord:
+    """Normalise an owslib record (ISO ``MD_Metadata`` or Dublin Core) to a CswRecord."""
+    if isinstance(raw, MD_Metadata):
+        ident = _iso_identification(raw)
+        return CswRecord(
+            identifier=getattr(raw, "identifier", "") or "",
+            title=(getattr(ident, "title", "") or "") if ident else "",
+            references=_iso_references(raw),
+            subjects=_iso_keywords(ident) if ident else [],
+            bbox=_bbox_tuple(getattr(ident, "bbox", None)) if ident else None,
+        )
+    # Dublin Core (csw:Record) fallback.
     return CswRecord(
         identifier=getattr(raw, "identifier", "") or "",
         title=getattr(raw, "title", "") or "",
         references=list(getattr(raw, "references", []) or []),
         subjects=list(getattr(raw, "subjects", []) or []),
-        bbox=_extract_bbox(raw),
+        bbox=_bbox_tuple(getattr(raw, "bbox", None)),
     )
 
 
@@ -185,6 +224,8 @@ def _get_records(csw, filter_list, pagesize: int, maxrecords: int) -> dict:
             startposition=startposition,
             maxrecords=pagesize,
             sortby=sortby,
+            outputschema=ISO_OUTPUT_SCHEMA,
+            esn="full",
         )
         records.update(csw.records)
         nextrecord = csw.results.get("nextrecord", 0)
@@ -231,8 +272,16 @@ def connect(endpoint: str, timeout: int = 60) -> CatalogueServiceWeb:
     return CatalogueServiceWeb(endpoint, timeout=timeout)
 
 
-def get_page(csw, filter_list, *, startposition: int = 1, pagesize: int = 10):
-    """Fetch one page of CSW records.
+def get_page(
+    csw,
+    filter_list,
+    *,
+    startposition: int = 1,
+    pagesize: int = 10,
+    outputschema: str = ISO_OUTPUT_SCHEMA,
+    esn: str = "full",
+):
+    """Fetch one page of CSW records (ISO ``gmd`` records by default).
 
     Returns ``(records, results)`` where *records* is a list of
     :class:`CswRecord` and *results* is the CSW result summary dict
@@ -246,6 +295,8 @@ def get_page(csw, filter_list, *, startposition: int = 1, pagesize: int = 10):
         startposition=startposition,
         maxrecords=pagesize,
         sortby=sortby,
+        outputschema=outputschema,
+        esn=esn,
     )
     records = [_to_record(r) for r in csw.records.values()]
     return records, dict(csw.results)
