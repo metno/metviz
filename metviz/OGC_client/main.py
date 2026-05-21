@@ -208,13 +208,13 @@ _csw_highlight = None
 _trajectory = {"line": None, "marker": None, "times": None, "points": None}
 
 # --- Remember the last CSW search inputs in the browser (localStorage) ---
+# Only the stable fields are persisted. The bbox and datetime range are
+# deliberately NOT persisted: stale values silently narrow later searches to
+# nothing ("I cleared the text but still get no results").
 csw_storage = BrowserStorage(key="metviz_csw_search")
 _CSW_FIELDS = {
     "endpoint": csw_url_input,
     "text": csw_anytext_input,
-    "bbox": csw_bbox_label,
-    "start": csw_datetime_picker_start,
-    "end": csw_datetime_picker_end,
 }
 _CSW_DATETIME_FIELDS = {"start", "end"}
 # Guard so restoring values into widgets does not immediately re-save them.
