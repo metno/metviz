@@ -3,77 +3,94 @@
 <head>
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1" />
-<title>A Standards-Based Explorer for Environmental Data</title>
+<title>A Standards-Based Explorer for Environmental Data — MET Norway</title>
 <style>
   :root {
-    --bg: #0d1b2a;
-    --panel: #ffffff;
-    --ink: #1b2a3a;
-    --muted: #5b6b7b;
-    --accent: #0a6cbd;
-    --accent2: #00838f;
+    /* MET Norway brand (logo colour #0b455e) */
+    --brand: #0b455e;
+    --brand-deep: #07303f;
+    --brand-2: #2a8aa8;
+    --ink: #16313f;
+    --muted: #5b7280;
     --ok: #1b8a5a;
     --warn: #b5651d;
-    --line: #d9e2ec;
+    --line: #d7e3e9;
+    --panel: #ffffff;
   }
   * { box-sizing: border-box; }
   html, body {
     margin: 0; height: 100%;
     font-family: -apple-system, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
-    background: var(--bg); color: var(--ink);
+    background: var(--brand-deep); color: var(--ink);
   }
   #deck { height: 100vh; width: 100vw; position: relative; overflow: hidden; }
   .slide {
     position: absolute; inset: 0; display: none;
-    padding: 6vh 8vw; flex-direction: column; justify-content: center;
+    padding: 7vh 8vw 9vh; flex-direction: column; justify-content: center;
     background: var(--panel);
     animation: fade .25s ease;
   }
   .slide.active { display: flex; }
   @keyframes fade { from { opacity: 0; transform: translateY(8px);} to {opacity:1; transform:none;} }
 
-  .kicker { color: var(--accent2); font-weight: 700; letter-spacing: .12em;
+  .kicker { color: var(--brand-2); font-weight: 700; letter-spacing: .12em;
             text-transform: uppercase; font-size: clamp(.7rem, 1.2vw, .95rem); margin-bottom: .6rem; }
-  h1 { font-size: clamp(1.9rem, 4.6vw, 3.4rem); line-height: 1.08; margin: 0 0 1rem; color: var(--bg); }
-  h2 { font-size: clamp(1.5rem, 3.4vw, 2.4rem); line-height: 1.12; margin: 0 0 1.4rem; color: var(--bg); }
+  h1 { font-size: clamp(1.9rem, 4.6vw, 3.4rem); line-height: 1.08; margin: 0 0 1rem; color: var(--brand); }
+  h2 { font-size: clamp(1.5rem, 3.4vw, 2.4rem); line-height: 1.12; margin: 0 0 1.4rem; color: var(--brand); }
   .sub { font-size: clamp(1rem, 1.9vw, 1.4rem); color: var(--muted); margin: 0 0 1rem; }
   ul { font-size: clamp(1rem, 1.9vw, 1.45rem); line-height: 1.5; margin: .3rem 0; padding-left: 1.3em; }
   li { margin: .5rem 0; }
-  li strong { color: var(--bg); }
-  .lead { border-left: 6px solid var(--accent); padding-left: 1rem; }
+  li::marker { color: var(--brand-2); }
+  li strong { color: var(--brand); }
+  .lead { border-left: 6px solid var(--brand-2); padding-left: 1rem; }
 
   table { border-collapse: collapse; font-size: clamp(.95rem, 1.8vw, 1.35rem); margin-top: .4rem; }
   th, td { text-align: left; padding: .55rem 1.1rem; border-bottom: 1px solid var(--line); }
-  th { color: var(--accent); border-bottom: 2px solid var(--accent); }
-  td:first-child { font-weight: 700; color: var(--bg); white-space: nowrap; }
+  th { color: var(--brand); border-bottom: 2px solid var(--brand-2); }
+  td:first-child { font-weight: 700; color: var(--brand); white-space: nowrap; }
 
   .ok li::marker { content: "✅ "; }
   .warn li::marker { content: "⚠️ "; }
-  .fair b { color: var(--accent); }
+  .fair b { color: var(--brand-2); }
 
-  .title-slide { background: linear-gradient(150deg, #0d1b2a 0%, #0a3d62 60%, #0a6cbd 100%); color: #fff; }
-  .title-slide h1 { color: #fff; }
-  .title-slide .sub { color: #cfe3f5; }
-  .title-slide .kicker { color: #7fd0e0; }
+  .title-slide { background: linear-gradient(150deg, var(--brand-deep) 0%, var(--brand) 55%, var(--brand-2) 120%); color: #fff; }
+  .title-slide h1, .title-slide h2 { color: #fff; }
+  .title-slide .sub { color: #cfe6ee; }
+  .title-slide .kicker { color: #8fd6e6; }
+  .title-slide li::marker { color: #8fd6e6; }
+  .title-slide li strong { color: #ffffff; }
+  .title-slide .fair b { color: #8fd6e6; }
+  .title-slide .lead { border-left-color: #8fd6e6; }
+
+  /* logo chip — white background so the petrol-blue mark reads on any slide */
+  .logo {
+    position: absolute; top: 3.4vh; right: 8vw;
+    background: #fff; border-radius: 10px; padding: 8px 12px;
+    box-shadow: 0 2px 10px rgba(0,0,0,.12); height: 40px;
+  }
+  .logo img { height: 24px; display: block; }
+  .title-slide .logo { height: 56px; padding: 12px 16px; }
+  .title-slide .logo img { height: 32px; }
 
   footer {
-    position: absolute; bottom: 2.4vh; left: 8vw; right: 8vw;
+    position: absolute; bottom: 3vh; left: 8vw; right: 8vw;
     display: flex; justify-content: space-between; align-items: center;
     color: var(--muted); font-size: .8rem;
   }
-  .title-slide footer { color: #9fc4e0; }
-  .progress { position: absolute; top: 0; left: 0; height: 4px; background: var(--accent); transition: width .25s; }
+  .title-slide footer { color: #a9cfdb; }
+  .progress { position: absolute; top: 0; left: 0; height: 4px; background: var(--brand-2); transition: width .25s; }
 
   .notes {
-    margin-top: 1.4rem; padding: .8rem 1rem; background: #f4f8fc; border: 1px solid var(--line);
-    border-radius: 8px; color: var(--muted); font-size: clamp(.85rem, 1.4vw, 1.05rem); display: none;
+    margin-top: 1.4rem; padding: .8rem 1rem; background: #eef5f8; border: 1px solid var(--line);
+    border-left: 4px solid var(--brand-2); border-radius: 8px; color: var(--muted);
+    font-size: clamp(.85rem, 1.4vw, 1.05rem); display: none;
   }
   .notes.show { display: block; }
-  .notes b { color: var(--accent2); }
+  .notes b { color: var(--brand); }
 
-  .hint { position: absolute; bottom: 2.4vh; left: 50%; transform: translateX(-50%);
+  .hint { position: absolute; bottom: 3vh; left: 50%; transform: translateX(-50%);
           color: var(--muted); font-size: .72rem; }
-  .title-slide .hint { color: #9fc4e0; }
+  .title-slide .hint { color: #a9cfdb; }
 </style>
 </head>
 <body>
@@ -190,7 +207,7 @@
       <li>🟢 <strong>Usable working prototype</strong>, deployed in our operational environment.</li>
       <li>🟢 Refactored into <strong>reusable, shared components</strong> (search, plotting, maps).</li>
       <li>🟢 <strong>Automated test suite</strong> (130+ tests) for confidence in changes.</li>
-      <li>🟡 Validated mainly against met.no catalogues — broader testing pending.</li>
+      <li>🟡 Validated mainly against MET Norway catalogues — broader testing pending.</li>
     </ul>
   </section>
 
@@ -225,19 +242,25 @@
 <div class="hint">← → / Space to navigate · <b>N</b> toggles speaker notes · <b>F</b> fullscreen</div>
 
 <script>
+  var MET_LOGO = "data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHdpZHRoPSIxODIiIGhlaWdodD0iNTEiPjx0aXRsZT5TbGljZSAxPC90aXRsZT48cGF0aCBmaWxsPSIjMGI0NTVlIiBmaWxsLXJ1bGU9ImV2ZW5vZGQiIGQ9Ik0xNS42NDIgMy4xMjJDOC40NjcgMy4xMjIgMi42MyA4Ljk2IDIuNjMgMTYuMTMyYzAgNy4xNzUgNS44MzggMTMuMDExIDEzLjAxMyAxMy4wMTEgNy4xNzggMCAxMy4wMTctNS44MzYgMTMuMDE3LTEzLjAxcy01Ljg0LTEzLjAxLTEzLjAxNy0xMy4wMW0wIDI4LjMyNUM3LjIgMzEuNDQ3LjMyOCAyNC41NzUuMzI4IDE2LjEzMi4zMjggNy42OTEgNy4xOTguODIgMTUuNjQyLjgyYzguNDQ2IDAgMTUuMzE2IDYuODcgMTUuMzE2IDE1LjMxMnMtNi44NyAxNS4zMTUtMTUuMzE2IDE1LjMxNW05LjE0IDE5LjQzOS01Ljk5Mi01Ljk4OC01Ljk5NCA1Ljk4OC01Ljk5NC01Ljk4OC01LjI0IDUuMjM1LTEuNTA2LTEuNTA1IDYuNzQ2LTYuNzQgNS45OTQgNS45ODYgNS45OTQtNS45ODYgNS45OSA1Ljk4NiA1LjIzMy01LjIzNSAxLjUwOCAxLjUwOHpNNTguNyA4LjIwNGgyLjE2MlYyMi4zNEg1OC43MnYtOS44MTRsLTIuOTA4IDYuMDE5aC0xLjc3OGwtMi45MS02LjAxOXY5LjgxNGgtMi4xNFY4LjIwNGgyLjE2M2wzLjc3NiA3LjgxNXptNy41MDggNy43MzR2LjAyMWg0LjQ0NHYtLjAyYy0uMDItMS41MTUtLjkyOS0yLjI2My0yLjIyLTIuMjYzLTEuMzE0IDAtMi4yMjQuNzQ4LTIuMjI0IDIuMjYybTQuMzQ0IDMuMDloMi4xNjFjLS4zNjIgMi43NjgtMi42MDUgMy41MTYtNC4yODEgMy41MTYtMS44MTkgMC00LjM0My0uODktNC4zNDMtNC4zMjN2LTIuMjYyYzAtMy40MzMgMi41MjQtNC4zMjIgNC4zNDMtNC4zMjIgMS44MTcgMCA0LjM0MS44OSA0LjM0MSA0LjMyMnYxLjg3N2gtNi41NjV2LjM0NWMwIDEuNTc0LjkxIDIuMzIgMi4yMjQgMi4zMiAxLjA0OCAwIDEuODM4LS40ODMgMi4xMi0xLjQ3M204LjEzNi4yODNjMCAuNzY3LjE0Mi45OS45NjkuOTloMS41OTV2Mi4wMzlINzkuMDVjLTEuNzM2IDAtMi40ODQtLjg0OC0yLjQ4NC0yLjQ4M3YtNS45MzhoLTEuNDc0di0yaDEuNDc0di0yLjM2aDIuMTIydjIuMzYyaDIuNTY0djJoLTIuNTY0em03LjM2Mi0zLjM3M3YuMDIxaDQuNDQ1di0uMDJjLS4wMi0xLjUxNS0uOTMtMi4yNjMtMi4yMjEtMi4yNjMtMS4zMTQgMC0yLjIyMy43NDgtMi4yMjMgMi4yNjJtNC4zNDUgMy4wOWgyLjE2Yy0uMzYxIDIuNzY4LTIuNjA0IDMuNTE2LTQuMjgxIDMuNTE2LTEuODIgMC00LjM0My0uODktNC4zNDMtNC4zMjN2LTIuMjYyYzAtMy40MzMgMi41MjQtNC4zMjIgNC4zNDMtNC4zMjIgMS44MiAwIDQuMzQ0Ljg5IDQuMzQ0IDQuMzIydjEuODc3aC02LjU2N3YuMzQ1YzAgMS41NzQuOTA5IDIuMzIgMi4yMjMgMi4zMiAxLjA0OSAwIDEuODM5LS40ODMgMi4xMi0xLjQ3M20xMS43MTItMy4wM2MwLTEuNTc0LS45MS0yLjMyMi0yLjIyMy0yLjMyMi0xLjMxMSAwLTIuMjIuNzQ4LTIuMjIgMi4zMjJ2Mi4xODNjMCAxLjU3NC45MDkgMi4zMiAyLjIyIDIuMzIgMS4zMTQgMCAyLjIyMy0uNzQ2IDIuMjIzLTIuMzJ6bS02LjU2Ny0uMDM5YzAtMy40MzMgMi41MjUtNC4zMjIgNC4zNDQtNC4zMjIgMS44MTggMCA0LjM0Mi44OSA0LjM0MiA0LjMyMnYyLjI2MmMwIDMuNDMzLTIuNTI0IDQuMzIzLTQuMzQyIDQuMzIzLTEuODIgMC00LjM0NC0uODktNC4zNDQtNC4zMjN6bTE2LjAxNC0yLjE2MWMtMS4zMTEgMC0yLjIyLjcyNi0yLjIyIDIuM3Y2LjI0MmgtMi4xMlYxMS45MmgyLjEydjEuMDFjLjMtLjYwNyAxLjMzMy0xLjE5MyAyLjQyMy0xLjE5M2guODF2Mi4wNjF6bTkuNzU0IDIuMmMwLTEuNTc0LS45MS0yLjMyMi0yLjIyLTIuMzIyLTEuMzE0IDAtMi4yMjQuNzQ4LTIuMjI0IDIuMzIydjIuMTgzYzAgMS41NzQuOTEgMi4zMiAyLjIyNCAyLjMyIDEuMzEgMCAyLjIyLS43NDYgMi4yMi0yLjMyem0tNi41NjMtLjAzOWMwLTMuNDMzIDIuNTI0LTQuMzIyIDQuMzQzLTQuMzIyIDEuODE1IDAgNC4zNDMuODkgNC4zNDMgNC4zMjJ2Mi4yNjJjMCAzLjQzMy0yLjUyOCA0LjMyMy00LjM0MyA0LjMyMy0xLjgyIDAtNC4zNDMtLjg5LTQuMzQzLTQuMzIzem0xMy44NyAzLjM1MmMwIC43NjcuMTQzLjk5Ljk3MS45OWguMzI0djIuMDM5aC0uOTI5Yy0xLjczOCAwLTIuNDg1LS44NDgtMi40ODUtMi40ODNWOC4yMDRoMi4xMnptMTAuNDgzLTMuMzEzYzAtMS41NzQtLjkxLTIuMzIyLTIuMjIzLTIuMzIyLTEuMzEgMC0yLjIyLjc0OC0yLjIyIDIuMzIydjIuMTgzYzAgMS41NzQuOTEgMi4zMiAyLjIyIDIuMzIgMS4zMTQgMCAyLjIyMy0uNzQ2IDIuMjIzLTIuMzJ6bS02LjU2Ni0uMDM5YzAtMy40MzMgMi41MjQtNC4zMjIgNC4zNDMtNC4zMjJzNC4zNDMuODkgNC4zNDMgNC4zMjJ2Mi4yNjJjMCAzLjQzMy0yLjUyNSA0LjMyMy00LjM0MyA0LjMyMy0xLjgyIDAtNC4zNDMtLjg5LTQuMzQzLTQuMzIzem0yMy42MDYgNi4zODFoMi4xMTlWMTEuOTJoLTIuMTE5em0wLTExLjk3NWgyLjExOVY4LjIwNGgtMi4xMTl6bTQuOTg2IDguNjQyaDIuMTgyYy4xNjEgMS4wMyAxLjE1MiAxLjQ5NSAyLjI4NSAxLjQ5NS45MjggMCAxLjcxNS0uMjQzIDEuNzE1LTEuMDkgMC0uNzA2LS42MjgtLjkyOS0xLjMxNS0xLjA5bC0xLjk3Ny0uNTA1Yy0xLjM3NS0uMzQzLTIuNjQ2LTEuMTEtMi42NDYtMy4xMSAwLTIuMDYgMS42NTctMy4wNyAzLjc3NS0zLjA3IDIuMjQ1IDAgMy44IDEuMDEgNCAzLjMzaC0yLjIyM2MtLjE2LS45MDctLjk0OC0xLjI5LTEuOTE4LTEuMjktLjY0NCAwLTEuNDkyLjI0Mi0xLjQ5MiAxLjA3IDAgLjYyNy42MDUuODI5IDEuMTcxLjk2OGwxLjkxNS40ODVjMS45MDEuNDg2IDIuODUyIDEuMjkzIDIuODUyIDMuMjczLS4wMjMgMi4wNi0xLjYxOCAzLjA3LTMuODggMy4wNy0yLjQwNSAwLTQuMzItMS4xNTEtNC40NDQtMy41MzZtMTMuMTg5LTIuODQ3IDMuODk2LTQuMjRoMi41NjZsLTMuNzU3IDQuMDc4IDQuMzI0IDYuMzQyaC0yLjQ2NmwtMy4yNzItNC44MDctMS4yOSAxLjQxNHYzLjM5M2gtMi4xMjVWOC4yMDRoMi4xMjR6TTQ4Ljg4MyA0My4xNzZoMi4xMjFWMzIuNzU0aC0yLjEyMXptMC0xMS45NzhoMi4xMjFWMjkuMDRoLTIuMTIxem03Ljc1MSAxMS45NzhoLTIuMTIyVjMyLjc1NGgyLjEyMnYuOTFjLjMwMi0uNjA2IDEuMzMzLTEuMTkxIDIuNDIyLTEuMTkxIDEuOCAwIDQuMTQzIDEuMTEgNC4xNDMgNC4zMjJ2Ni4zOGgtMi4xMjJ2LTYuMzRjMC0xLjU3Ni0uOTA3LTIuMzA1LTIuMjIxLTIuMzA1cy0yLjIyMi43MjktMi4yMjIgMi4zMDR6bTIzLjIyNi0zLjAyOWMwIC43NjcuMTQuOTg3Ljk2OS45ODdoMS41OTd2Mi4wNDJoLTIuMjA0Yy0xLjczNyAwLTIuNDg0LS44NDgtMi40ODQtMi40ODV2LTUuOTM3aC0xLjQ3NHYtMmgxLjQ3NHYtMi4zNjJoMi4xMjF2Mi4zNjJoMi41Njd2MmgtMi41Njd6bS0xMy45OC0uMzA0aDIuMTgzYy4xNjIgMS4wMjkgMS4xNSAxLjQ5NSAyLjI4MSAxLjQ5NS45MyAwIDEuNzE3LS4yNDIgMS43MTctMS4wOSAwLS43MDktLjYyNi0uOTI5LTEuMzEyLTEuMDlsLTEuOTgtLjUwNWMtMS4zNzMtLjM0My0yLjY0Ni0xLjExLTIuNjQ2LTMuMTEzIDAtMi4wNTggMS42NTUtMy4wNjcgMy43NzgtMy4wNjcgMi4yNDEgMCAzLjc5NyAxLjAxIDMuOTk5IDMuMzMyaC0yLjIyMmMtLjE2Mi0uOTA5LS45NDgtMS4yOTQtMS45Mi0xLjI5NC0uNjQ3IDAtMS40OTQuMjQzLTEuNDk0IDEuMDcxIDAgLjYyNC42MDYuODI4IDEuMTcxLjk3bDEuOTIuNDgzYzEuODk5LjQ4NSAyLjg0NyAxLjI5NCAyLjg0NyAzLjI3LS4wMiAyLjA2Mi0xLjYxNSAzLjA3Mi0zLjg3NyAzLjA3Mi0yLjQwNSAwLTQuMzI0LTEuMTQ5LTQuNDQ1LTMuNTM0bTE5LjQ4OCAzLjMzM2gyLjEyVjMyLjc1NGgtMi4xMnptMC0xMS45NzhoMi4xMlYyOS4wNGgtMi4xMnptOC41ODMgOC45NDljMCAuNzY3LjE0Ljk4Ny45NjcuOTg3aDEuNTk3djIuMDQyaC0yLjIwMmMtMS43MzcgMC0yLjQ4NS0uODQ4LTIuNDg1LTIuNDg1di01LjkzN2gtMS40NzZ2LTJoMS40NzZ2LTIuMzYyaDIuMTIzdjIuMzYyaDIuNTY0djJIOTMuOTV6bTcuNTctMS4xMzJjMCAxLjU3NS45MSAyLjMwNCAyLjE2MiAyLjMwNHMyLjE2Mi0uNzI5IDIuMTYyLTIuMzA0di02LjI2aDIuMTJ2MTAuNDJoLTIuMTJ2LS45OWMtLjMwNS42MDYtMS4zMzQgMS4xOTItMi40MjQgMS4xOTItMS43OTYgMC00LjAyLTEuMjUzLTQuMDItNC4zMnYtNi4zMDNoMi4xMnptMjAuNzIyIDEuMTMyYzAgLjc2Ny4xNDIuOTg3Ljk3MS45ODdoMS41OTZ2Mi4wNDJoLTIuMjA1Yy0xLjczNCAwLTIuNDgyLS44NDgtMi40ODItMi40ODV2LTUuOTM3aC0xLjQ3NXYtMmgxLjQ3NXYtMi4zNjJoMi4xMnYyLjM2MmgyLjU2N3YyaC0yLjU2N3ptLTguMTYyIDBjMCAuNzY3LjE0Mi45ODcuOTcxLjk4N2gxLjU5NnYyLjA0MmgtMi4yYy0xLjc0IDAtMi40ODctLjg0OC0yLjQ4Ny0yLjQ4NXYtNS45MzdoLTEuNDc2di0yaDEuNDc2di0yLjM2MmgyLjEydjIuMzYyaDIuNTY3djJoLTIuNTY3em0zMi4wMjEtMjIuNTczYzAgMS41NzUuOTA5IDIuMzAyIDIuMjIzIDIuMzAyIDEuMzEgMCAyLjIyLS43MjcgMi4yMi0yLjMwMnYtMS41NzZjMC0xLjU3NC0uOTEtMi4zLTIuMjItMi4zLTEuMzE0IDAtMi4yMjMuNzI2LTIuMjIzIDIuM3ptNC40NDMgNC4zMjJ2LTEuMTUxYy0uMy42MDYtMS4zMzQgMS4xOS0yLjQyNCAxLjE5LTEuNzk2IDAtNC4xNC0xLjExLTQuMTQtNC4zMnYtMS42NTZjMC0zLjIxMyAyLjM0NC00LjMyMiA0LjE0LTQuMzIyIDEuMDkgMCAyLjEyMy41ODUgMi40MjQgMS4xOTJ2LS45MWgyLjEyMnYxMC4wMTZjMCAzLjQzNS0yLjUyNyA0LjMyMy00LjM0MiA0LjMyMy0xLjcxOSAwLTQuMDItLjc4Ni00LjMwNC0zLjcxNGgyLjE0MmMuMjIzIDEuMTMgMS4wNTIgMS42NzQgMi4xNjIgMS42NzQgMS4zMSAwIDIuMjItLjc0NyAyLjIyLTIuMzIyIi8+PC9zdmc+";
   var slides = Array.prototype.slice.call(document.querySelectorAll('.slide'));
   var i = 0, notesOn = false;
+
+  // Brand each slide: logo chip + footer.
+  slides.forEach(function (s, n) {
+    var logo = document.createElement('div');
+    logo.className = 'logo';
+    logo.innerHTML = '<img alt="MET Norway" src="' + MET_LOGO + '">';
+    s.appendChild(logo);
+    var f = document.createElement('footer');
+    f.innerHTML = '<span>Meteorologisk institutt · MET Norway</span><span>' + (n + 1) + ' / ' + slides.length + '</span>';
+    s.appendChild(f);
+  });
+
   function render() {
     slides.forEach(function (s, n) { s.classList.toggle('active', n === i); });
     document.getElementById('progress').style.width = ((i + 1) / slides.length * 100) + '%';
-    var active = slides[i];
-    var f = active.querySelector('footer');
-    if (!f) {
-      f = document.createElement('footer');
-      f.innerHTML = '<span>Standards-Based Data Explorer</span><span>' + (i + 1) + ' / ' + slides.length + '</span>';
-      active.appendChild(f);
-    }
-    var note = active.querySelector('.notes');
+    var note = slides[i].querySelector('.notes');
     if (note) note.classList.toggle('show', notesOn);
   }
   function go(d) { i = Math.max(0, Math.min(slides.length - 1, i + d)); render(); }
@@ -253,7 +276,7 @@
     }
   });
   document.getElementById('deck').addEventListener('click', function (e) {
-    // click right half = next, left half = previous
+    if (e.target.closest('.logo')) return;
     go(e.clientX > window.innerWidth / 2 ? 1 : -1);
   });
   render();
