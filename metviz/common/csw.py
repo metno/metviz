@@ -166,6 +166,34 @@ def _get_records(csw, filter_list, pagesize: int, maxrecords: int) -> dict:
     return records
 
 
+def build_filter(*, text=None, bbox=None, start=None, stop=None, crs: str = DEFAULT_CRS):
+    """Build the FES filter list for a CSW query (no network).
+
+    Returns a list suitable for ``getrecords2(constraints=...)``. Crucially,
+    ``fes.And`` / ``fes.Or`` require **at least two** operands, so a single
+    free-text term is passed through un-wrapped and a lone constraint is not
+    wrapped in an ``And``. An empty query returns ``[]`` (match everything).
+    """
+    constraints = []
+
+    if text:
+        terms = [text] if isinstance(text, str) else list(text)
+        kw = dict(wildCard="*", escapeChar="\\", singleChar="?", propertyname="apiso:AnyText")
+        likes = [fes.PropertyIsLike(literal=f"*{t}*", **kw) for t in terms]
+        constraints.append(fes.Or(likes) if len(likes) > 1 else likes[0])
+
+    if start is not None and stop is not None:
+        begin, end = fes_date_filter(start, stop)
+        constraints += [begin, end]
+
+    if bbox:
+        constraints.append(fes.BBox(bbox, crs=crs))
+
+    if len(constraints) >= 2:
+        return [fes.And(constraints)]
+    return constraints
+
+
 def search(
     endpoint: str,
     *,
@@ -185,21 +213,7 @@ def search(
     datetime-like; both must be given to apply a temporal filter.
     """
     csw = CatalogueServiceWeb(endpoint, timeout=timeout)
-    constraints = []
-
-    if text:
-        terms = [text] if isinstance(text, str) else list(text)
-        kw = dict(wildCard="*", escapeChar="\\", singleChar="?", propertyname="apiso:AnyText")
-        constraints.append(fes.Or([fes.PropertyIsLike(literal=f"*{t}*", **kw) for t in terms]))
-
-    if start is not None and stop is not None:
-        begin, end = fes_date_filter(start, stop)
-        constraints += [begin, end]
-
-    if bbox:
-        constraints.append(fes.BBox(bbox, crs=crs))
-
-    filter_list = [fes.And(constraints)] if len(constraints) >= 2 else constraints
+    filter_list = build_filter(text=text, bbox=bbox, start=start, stop=stop, crs=crs)
     raw_records = _get_records(csw, filter_list, pagesize=pagesize, maxrecords=maxrecords)
     return [_to_record(r) for r in raw_records.values()]
 
