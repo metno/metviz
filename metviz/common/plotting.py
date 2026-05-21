@@ -62,8 +62,9 @@ def plot(
     """Build the main line plot for *var* against *dimension*.
 
     Branches on ``featureType``:
-    - ``timeseries``: a line vs. time, optionally resampled to *frequency* when
-      the time axis is monotonic.
+    - ``timeseries`` / ``trajectory``: a line vs. time, optionally resampled to
+      *frequency* when the time axis is monotonic. (A trajectory is 1-D along
+      time, so its variables plot exactly like a time series.)
     - everything else (profile / timeSeriesProfile): a line vs. the selected
       dimension, with the y-axis inverted for depth/pressure-style axes.
 
@@ -76,7 +77,7 @@ def plot(
     title = _resolve_title(ds, var, title)
     masked = ds[var].where(ds[var] != FILL_VALUE)
 
-    if featureType == "timeseries":
+    if featureType in ("timeseries", "trajectory"):
         axis_arguments = {
             "grid": True,
             "x": dimension,
