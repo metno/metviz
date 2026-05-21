@@ -1154,9 +1154,8 @@ show_options_button.on_click(show_hide_side_opt_widget)
 
 
 # --- Layout: React template (resizable, draggable grid) ----------------------
-# The CSW search lives in the (collapsible) sidebar. The main area is a 12-column
-# react-grid where map and plot sit side by side and the results table spans the
-# full width below — each grid card can be dragged/resized to adjust the view.
+# Sidebar: collapsible CSW search + the compact results table (same column).
+# Main area: map and plot side by side, each a draggable/resizable grid card.
 map_card = pn.Card(
     pn.panel(lmap, sizing_mode="stretch_both", min_height=380),
     pn.Row(lon_label, lat_label),
@@ -1172,20 +1171,12 @@ plot_card = pn.Card(
     margin=0,
     sizing_mode="stretch_both",
 )
-results_card = pn.Card(
-    results_panel,
-    title="Results",
-    collapsible=False,
-    margin=0,
-    sizing_mode="stretch_both",
-)
 
 template = pn.template.ReactTemplate(
     title="OGC Catalogue Explorer",
-    sidebar=[search_card],
-    sidebar_width=380,
+    sidebar=[search_card, results_panel],
+    sidebar_width=440,
 )
-template.main[0:4, 0:6] = map_card
-template.main[0:4, 6:12] = plot_card
-template.main[4:9, 0:12] = results_card
+template.main[0:6, 0:6] = map_card
+template.main[0:6, 6:12] = plot_card
 template.servable()

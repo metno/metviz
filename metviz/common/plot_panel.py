@@ -19,20 +19,20 @@ from .variables import get_axis_candidates, get_plottable_vars, sort_axis_candid
 class DatasetPlotPanel:
     """Variable/axis selectors + a plot area for a single xarray Dataset."""
 
-    def __init__(self, *, min_height: int = 500):
+    def __init__(self, *, min_height: int = 300):
         self.variable_select = pn.widgets.Select(name="Variable", options=[], visible=False, width=340)
         self.dimension_select = pn.widgets.Select(name="Axis", options=[], visible=False, width=200)
         self._message = pn.pane.Markdown("Select a record to plot.", sizing_mode="stretch_width")
-        # Use stretch_width + a concrete min_height (not stretch_both): inside a
-        # template grid card a fully-responsive Bokeh plot can't resolve its
-        # height and collapses/overlaps the controls. A definite height makes the
-        # column flow predictably (controls on top, plot below).
+        # Mirror the (working) map card: the controls are a fixed-height row and
+        # the plot area is stretch_both so a responsive Bokeh plot inherits a
+        # definite height from the grid card and fills it (rather than collapsing
+        # as it does under stretch_width).
         self._controls = pn.Row(self.variable_select, self.dimension_select, sizing_mode="stretch_width")
-        self._plot_area = pn.Column(self._message, sizing_mode="stretch_width", min_height=min_height)
+        self._plot_area = pn.Column(self._message, sizing_mode="stretch_both", min_height=min_height)
         self.layout = pn.Column(
             self._controls,
             self._plot_area,
-            sizing_mode="stretch_width",
+            sizing_mode="stretch_both",
         )
 
         self._ds: xr.Dataset | None = None
