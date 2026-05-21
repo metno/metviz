@@ -48,7 +48,7 @@ import pandas as pd
 import panel as pn
 from bokeh.models import Button
 from common.browser_storage import BrowserStorage
-from common.csw import build_filter, collect_page, connect, parse_bbox
+from common.csw import CswRecord, build_filter, collect_page, connect, parse_bbox
 from common.data import load_data
 from common.plot_panel import DatasetPlotPanel
 from common.trajectory import track_bounds, track_points
@@ -197,6 +197,10 @@ csw_url_reset_button = pn.widgets.Button(name="Reset CSW URL", button_type="warn
 csw_query_button = pn.widgets.Button(name="Query CSW", button_type="success")
 # add a button to clear previous results
 csw_clear_button = pn.widgets.Button(name="Clear Results", button_type="danger", visible=True)
+# DEMO/TEST: inject two known trajectory datasets as fake results so the
+# trajectory plot + track overlay can be exercised without the CSW (which does
+# not surface featureType). Remove once real trajectory records are available.
+csw_demo_button = pn.widgets.Button(name="Demo: trajectories", button_type="default")
 
 # csw_layers_pane = pn.pane.Markdown("", height=100, sizing_mode="stretch_width")
 csw_error_pane = pn.pane.Alert("", alert_type="danger", visible=False)
@@ -358,7 +362,7 @@ search_card = pn.Card(
     pn.Row(csw_anytext_input, csw_anytext_reset_button),
     pn.Row(csw_bbox_label, csw_bbox_reset_button),
     pn.Row(csw_datetime_picker_start, csw_datetime_picker_end, csw_datetime_reset_button),
-    pn.Row(csw_query_button, csw_clear_button),
+    pn.Row(csw_query_button, csw_clear_button, csw_demo_button),
     csw_error_pane,
     title="CSW Search",
     collapsible=True,
@@ -694,7 +698,38 @@ def prev_csw_page(event):
         _show_page(_csw_index)
 
 
+# DEMO/TEST: two known trajectory datasets (from the example list).
+_DEMO_TRAJECTORIES = [
+    ("UiT drifter AWS-ITO (2022)",
+     "https://thredds.met.no/thredds/dodsC/arcticdata/arctic-passion/UiT-drifters/AWS-ITO/aws_2022.nc"),
+    ("UiT drifter SIMBA-510 air temperature (2022)",
+     "https://thredds.met.no/thredds/dodsC/arcticdata/arctic-passion/UiT-drifters/SIMBA/simba-510_air-temperature2022.nc"),
+]
+
+
+def load_demo_trajectories(event):
+    """DEMO/TEST: show the two known trajectory datasets as fake results."""
+    global _csw_pages, _csw_index
+    records = [
+        CswRecord(
+            identifier=url,
+            title=title,
+            references=[{"scheme": "OPeNDAP", "url": url}],
+            feature_type="trajectory",
+        )
+        for title, url in _DEMO_TRAJECTORIES
+    ]
+    _csw_pages = []
+    _csw_index = -1
+    csw_page_label.visible = False
+    csw_prev_button.visible = False
+    csw_next_button.visible = False
+    search_card.collapsed = True
+    _show_results(records)
+
+
 csw_query_button.on_click(process_query)
+csw_demo_button.on_click(load_demo_trajectories)
 csw_next_button.on_click(next_csw_page)
 csw_prev_button.on_click(prev_csw_page)
 csw_flyto_button.on_click(fly_to_selected)
