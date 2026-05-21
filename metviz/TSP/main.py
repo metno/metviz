@@ -234,8 +234,7 @@ else:
 
     if not (validate_url(url) and validate_opendap(url)):
         pn.pane.Bokeh(
-            column(Div(text=f"<br><b>Invalid URL:</b><br>   {url}  <br><br> Please provide a valid OPeNDAP URL.")),
-            loading_indicator=True,
+            column(Div(text=f"<br><b>Invalid URL:</b><br>   {url}  <br><br> Please provide a valid OPeNDAP URL."))
         ).servable()
     else:
         logger.info(f"Loading dataset: {url}")
@@ -246,8 +245,7 @@ else:
             error_button = Button(label="", height=50, width=50)
             error_button.on_click(functools.partial(show_hide_widget, widget=error_div))
             pn.pane.Bokeh(
-                column(Div(text=f"<b>ValueError</b><br><br> Can't load dataset from {url} "), error_button, error_div),
-                loading_indicator=True,
+                column(Div(text=f"<b>ValueError</b><br><br> Can't load dataset from {url} "), error_button, error_div)
             ).servable()
 
     frequency_selector = pn.widgets.Select(options=FREQUENCY_OPTIONS, name="Resampling Frequency")
