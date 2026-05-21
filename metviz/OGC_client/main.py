@@ -189,11 +189,10 @@ csw_flyto_button = pn.widgets.Button(name="Fly to on map", disabled=True, visibl
 # worth of datasets for featureType, not the whole match set.
 CSW_PAGE_SIZE = 10
 
-# OPeNDAP detection opens each candidate dataset over the network to read its
-# featureType, so an unconstrained scan of a multi-million-record catalogue is
-# prohibitively expensive. Refuse OPeNDAP searches whose match count exceeds
-# this; WMS detection is a cheap metadata-only protocol check and is exempt.
-OPENDAP_HITS_LIMIT = 5000
+# Refuse any search whose CSW match count exceeds this — the user is asked to
+# narrow the query window in space and/or time. A cheap resultType="hits"
+# pre-check gets the count before we scan any records.
+MAX_HITS = 100
 csw_prev_button = pn.widgets.Button(name="◀ Prev", width=90, visible=False)
 csw_next_button = pn.widgets.Button(name="Next ▶", width=90, visible=False)
 csw_page_label = pn.widgets.StaticText(value="", visible=False)
@@ -669,11 +668,11 @@ def _has_constraint() -> bool:
 def process_query(event):
     """Connect to the CSW, build the space/time/text filter, and load page 1.
 
-    For OPeNDAP searches we first require a constraint and run a cheap
-    ``resultType="hits"`` pre-check, refusing the search if it would scan more
-    than ``OPENDAP_HITS_LIMIT`` datasets — each candidate is opened over the
-    network to read its featureType. WMS detection is metadata-only and cheap,
-    so it is exempt (the per-page scan cap bounds its cost).
+    For OPeNDAP searches we first require a constraint (an unfiltered scan opens
+    every dataset over the network to detect its featureType). For every search
+    we then run a cheap ``resultType="hits"`` pre-check and refuse when the
+    match count exceeds ``MAX_HITS``, asking the user to narrow the query window
+    in space and/or time.
 
     Args:
         event: Panel click event (ignored; present to wire up as a callback).
@@ -699,17 +698,16 @@ def process_query(event):
     try:
         _csw_state["csw"] = connect(endpoint)
         _csw_state["filter"] = _build_current_filter()
-        if not _wms_mode():
-            hits = count_hits(_csw_state["csw"], _csw_state["filter"])
-            if hits > OPENDAP_HITS_LIMIT:
-                csw_error_pane.object = (
-                    f"This OPeNDAP search matches {hits:,} records — too many to "
-                    f"probe (limit {OPENDAP_HITS_LIMIT:,}). Narrow the search with "
-                    "a tighter bounding box, time range, or text term."
-                )
-                csw_error_pane.visible = True
-                csw_output.visible = False
-                return
+        hits = count_hits(_csw_state["csw"], _csw_state["filter"])
+        if hits > MAX_HITS:
+            csw_error_pane.object = (
+                f"This search matches {hits:,} records — too many (limit "
+                f"{MAX_HITS}). Reduce the query window in space and/or time "
+                "(draw a tighter bounding box or pick a shorter date range)."
+            )
+            csw_error_pane.visible = True
+            csw_output.visible = False
+            return
     except Exception as exc:
         csw_error_pane.object = f"CSW query failed: {exc}"
         csw_error_pane.visible = True
