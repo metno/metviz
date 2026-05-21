@@ -9,6 +9,7 @@ from common.csw import (
     _iso_references,
     build_filter,
     collect_page,
+    count_hits,
     extract_opendap_url,
     extract_wms_url,
     feature_type_from_record,
@@ -90,6 +91,29 @@ def test_collect_page_scan_cap_terminates_without_exhausting():
     assert next_cursor == 31      # scanned 3 chunks of 10 then stopped
     assert end is False           # not exhausted -> Next can continue
     assert matches == 100_000
+
+
+class _HitsCsw:
+    """Records the getrecords2 kwargs and reports a fixed match count."""
+
+    def __init__(self, matches):
+        self.results = {"matches": matches}
+        self.last_call = None
+
+    def getrecords2(self, **kwargs):
+        self.last_call = kwargs
+
+
+def test_count_hits_uses_hits_resulttype_and_returns_matches():
+    csw = _HitsCsw(matches=1234)
+    assert count_hits(csw, []) == 1234
+    assert csw.last_call["resulttype"] == "hits"
+    assert csw.last_call["maxrecords"] == 0
+
+
+def test_count_hits_missing_matches_is_zero():
+    csw = _HitsCsw(matches=None)
+    assert count_hits(csw, []) == 0
 
 
 def test_extract_wms_url_by_protocol_and_url():
