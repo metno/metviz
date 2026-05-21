@@ -6,7 +6,8 @@ from common.trajectory import (
     duration_hours,
     geodesic_length_km,
     latlon_names,
-    nearest_index_for_epoch_ms,
+    nearest_index_for_time,
+    to_datetime64,
     track_bounds,
     track_points,
 )
@@ -57,11 +58,24 @@ def test_geodesic_length_positive():
     assert length > 0
 
 
-def test_nearest_index_for_epoch_ms():
+def test_nearest_index_for_time_accepts_various_x_types():
     times = pd.date_range("2022-01-01", periods=5, freq="h").values
-    epoch_ms = times[2].astype("datetime64[ms]").astype("int64")
-    assert nearest_index_for_epoch_ms(times, int(epoch_ms)) == 2
-    # a value 20 minutes past times[3] still snaps to index 3
-    near3 = times[3].astype("datetime64[ms]").astype("int64") + 20 * 60 * 1000
-    assert nearest_index_for_epoch_ms(times, int(near3)) == 3
-    assert nearest_index_for_epoch_ms(times, None) is None
+    # epoch ms (numeric)
+    epoch_ms = int(times[2].astype("datetime64[ms]").astype("int64"))
+    assert nearest_index_for_time(times, epoch_ms) == 2
+    # a python datetime (what Bokeh actually passes for a datetime axis)
+    assert nearest_index_for_time(times, pd.Timestamp(times[3]).to_pydatetime()) == 3
+    # a numpy datetime64
+    assert nearest_index_for_time(times, times[1]) == 1
+    # 20 min past times[3] still snaps to 3
+    near3 = int(times[3].astype("datetime64[ms]").astype("int64")) + 20 * 60 * 1000
+    assert nearest_index_for_time(times, near3) == 3
+    assert nearest_index_for_time(times, None) is None
+
+
+def test_to_datetime64_handles_datetime_and_epoch():
+    ts = pd.Timestamp("2022-01-01T03:00:00")
+    assert to_datetime64(ts.to_pydatetime()) == np.datetime64("2022-01-01T03:00:00", "ms")
+    epoch_ms = int(ts.value // 1_000_000)
+    assert to_datetime64(epoch_ms) == np.datetime64("2022-01-01T03:00:00", "ms")
+    assert to_datetime64(None) is None

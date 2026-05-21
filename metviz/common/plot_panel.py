@@ -10,23 +10,23 @@ full TSP dashboard.
 from __future__ import annotations
 
 import holoviews as hv
-import numpy as np
 import panel as pn
 import xarray as xr
 
 from .plotting import plot
+from .trajectory import to_datetime64
 from .variables import get_axis_candidates, get_plottable_vars, sort_axis_candidates
 
 
 def _cursor_vline(x, y=None):
-    """A vertical time-cursor at Bokeh x (epoch ms); hidden when x is None.
+    """A vertical time-cursor at the tapped x; hidden when x is None.
 
     Accepts ``y`` because a HoloViews DynamicMap fed by a Tap stream passes both
-    of the stream's parameters.
+    of the stream's parameters. *x* may be a datetime or numeric epoch.
     """
     if x is None:
         return hv.VLine(0).opts(alpha=0)
-    return hv.VLine(np.datetime64(int(x), "ms")).opts(color="red", line_width=1.5)
+    return hv.VLine(to_datetime64(x)).opts(color="red", line_width=1.5)
 
 
 class DatasetPlotPanel:
