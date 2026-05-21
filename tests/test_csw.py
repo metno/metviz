@@ -63,6 +63,35 @@ def test_collect_page_keeps_only_featuretype_records_and_terminates():
     assert matches == 42        # CSW total, not the filtered count
 
 
+class _BigCsw:
+    """A huge catalogue whose records never match — to test the scan cap."""
+
+    def __init__(self):
+        self.records = {}
+        self.results = {}
+
+    def getrecords2(self, *, startposition, maxrecords, **kwargs):
+        self.records = {
+            f"r{startposition + i}": SimpleNamespace(
+                identifier=f"r{startposition + i}", title="t", references=[], subjects=[]
+            )
+            for i in range(maxrecords)
+        }
+        self.results = {"matches": 100_000, "returned": maxrecords, "nextrecord": startposition + maxrecords}
+
+
+def test_collect_page_scan_cap_terminates_without_exhausting():
+    csw = _BigCsw()
+    records, next_cursor, end, matches = collect_page(
+        csw, [], start_cursor=1, page_size=10, fetch_size=10,
+        keep=lambda r: False, max_scan=30,
+    )
+    assert records == []          # nothing matched
+    assert next_cursor == 31      # scanned 3 chunks of 10 then stopped
+    assert end is False           # not exhausted -> Next can continue
+    assert matches == 100_000
+
+
 def test_extract_wms_url_by_protocol_and_url():
     assert extract_wms_url(
         [{"scheme": "OGC:WMS", "url": "https://x/thredds/wms/a?SERVICE=WMS&REQUEST=GetCapabilities"}]

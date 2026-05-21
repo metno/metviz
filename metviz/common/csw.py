@@ -353,6 +353,7 @@ def collect_page(
     page_size: int = 10,
     fetch_size: int = 10,
     keep=None,
+    max_scan: int = 500,
 ):
     """Scan CSW from *start_cursor*, keeping records for which ``keep(record)``
     is true, until *page_size* are collected or the result set is exhausted.
@@ -361,13 +362,16 @@ def collect_page(
     without inspecting the entire match set up front: it pulls *fetch_size*
     records at a time and applies *keep* only to what it consumes. *keep*
     defaults to :func:`keep_with_feature_type`; pass :func:`keep_with_wms` (or
-    any predicate) to filter differently.
+    any predicate) to filter differently. *max_scan* bounds how many records a
+    single page will scan before giving up (so a huge catalogue with few/no
+    matches doesn't scan indefinitely) — the next page resumes where it stopped.
 
     Returns ``(records, next_cursor, end, matches)``:
 
     - ``records``: up to *page_size* kept :class:`CswRecord`,
     - ``next_cursor``: CSW ``startposition`` to resume from for the next page,
-    - ``end``: ``True`` when the CSW result set has been fully scanned,
+    - ``end``: ``True`` only when the CSW result set is fully exhausted (not when
+      merely scan-capped — Next can still continue),
     - ``matches``: the CSW total match count (NOT the filtered count, which is
       unknown until ``end`` is reached).
     """
@@ -377,6 +381,7 @@ def collect_page(
     cursor = start_cursor
     matches = 0
     end = False
+    scanned = 0
 
     while len(matched) < page_size and not end:
         records, results = get_page(csw, filter_list, startposition=cursor, pagesize=fetch_size)
@@ -386,6 +391,7 @@ def collect_page(
             end = True
             break
 
+        scanned += returned
         filled = False
         for offset_in_chunk, record in enumerate(records):
             if keep(record):
@@ -400,6 +406,10 @@ def collect_page(
             cursor += returned
             if returned < fetch_size or cursor > matches:
                 end = True
+            elif scanned >= max_scan:
+                # Stop scanning this page; the result set isn't exhausted, so the
+                # next page can continue from `cursor`.
+                break
 
     return matched, cursor, end, matches
 

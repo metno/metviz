@@ -266,8 +266,10 @@ csw_storage.param.watch(_restore_csw_inputs, "value")
 # (add as a map layer). Switches both the result filter and the select action.
 SOURCE_OPENDAP = "OPeNDAP (plot)"
 SOURCE_WMS = "WMS (map layer)"
+# Default to WMS to match the default NBS endpoint (which serves WMS, not
+# featureType/OPeNDAP records); switch to OPeNDAP for a featureType catalogue.
 source_select = pn.widgets.RadioButtonGroup(
-    name="Source", options=[SOURCE_OPENDAP, SOURCE_WMS], value=SOURCE_OPENDAP
+    name="Source", options=[SOURCE_OPENDAP, SOURCE_WMS], value=SOURCE_WMS
 )
 
 
