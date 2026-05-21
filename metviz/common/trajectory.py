@@ -60,6 +60,22 @@ def geodesic_length_km(points: list[list[float]]) -> float:
     return total_m / 1000.0
 
 
+def nearest_index_for_epoch_ms(times, epoch_ms) -> int | None:
+    """Return the index in *times* nearest to a Bokeh x value in epoch ms.
+
+    Bokeh datetime axes report tapped/hovered positions as milliseconds since
+    the Unix epoch; map that back to the closest sample so the map marker can
+    follow the plot. Returns ``None`` if *epoch_ms* is ``None`` or *times* empty.
+    """
+    if epoch_ms is None:
+        return None
+    times = np.asarray(times).astype("datetime64[ms]")
+    if times.size == 0:
+        return None
+    target = np.datetime64(int(epoch_ms), "ms")
+    return int(np.abs(times - target).argmin())
+
+
 def duration_hours(ds: xr.Dataset, time_dim: str = "time") -> float:
     """Total trajectory duration in hours (0 if fewer than two timestamps)."""
     if time_dim not in ds.variables:

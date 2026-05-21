@@ -51,7 +51,7 @@ from common.browser_storage import BrowserStorage
 from common.csw import CswRecord, build_filter, collect_page, connect, parse_bbox
 from common.data import load_data
 from common.plot_panel import DatasetPlotPanel
-from common.trajectory import track_bounds, track_points
+from common.trajectory import nearest_index_for_epoch_ms, track_bounds, track_points
 from ipyleaflet import CircleMarker, DrawControl, GeoJSON, LayersControl, Map, Marker, Polyline
 from ipywidgets import HTML
 
@@ -295,9 +295,9 @@ _csw_index = -1
 # (which only tracks Markers / WMSLayers).
 _csw_result_markers: list = []
 _csw_highlight = None
-# Trajectory overlay for the selected record (track polyline; marker added in a
-# later step). Cleared whenever the selection changes.
-_trajectory = {"line": None}
+# Trajectory overlay for the selected record: track polyline + a marker that
+# follows taps on the plot. Cleared whenever the selection changes.
+_trajectory = {"line": None, "marker": None, "times": None, "points": None}
 
 # --- Remember the last CSW search inputs in the browser (localStorage) ---
 csw_storage = BrowserStorage(key="metviz_csw_search")
@@ -408,30 +408,55 @@ def _clear_result_markers():
 
 
 def _clear_trajectory():
-    """Remove the trajectory track overlay from the map."""
-    line = _trajectory["line"]
-    if line is not None:
-        try:
-            lmap.remove_layer(line)
-        except Exception:
-            pass
-        _trajectory["line"] = None
+    """Remove the trajectory track overlay + marker from the map."""
+    for key in ("line", "marker"):
+        layer = _trajectory[key]
+        if layer is not None:
+            try:
+                lmap.remove_layer(layer)
+            except Exception:
+                pass
+            _trajectory[key] = None
+    _trajectory["times"] = None
+    _trajectory["points"] = None
 
 
 def _show_trajectory(ds):
-    """Overlay the dataset's track on the map and zoom to fit it."""
+    """Overlay the dataset's track + a marker on the map and zoom to fit."""
     points = track_points(ds)
     if len(points) < 2:
         return
     line = Polyline(locations=points, color="green", fill=False, weight=3)
     lmap.add_layer(line)
     _trajectory["line"] = line
+    marker = Marker(location=points[0], draggable=False)
+    lmap.add_layer(marker)
+    _trajectory["marker"] = marker
+    _trajectory["points"] = points
+    _trajectory["times"] = ds["time"].values if "time" in ds.variables else None
     bounds = track_bounds(points)
     try:
         if bounds is not None:
             lmap.fit_bounds(bounds)
     except Exception:
         lmap.center = points[len(points) // 2]
+
+
+def _on_plot_time(epoch_ms):
+    """Move the trajectory marker to the track point nearest the tapped time."""
+    times = _trajectory["times"]
+    points = _trajectory["points"]
+    marker = _trajectory["marker"]
+    if times is None or points is None or marker is None:
+        return
+    idx = nearest_index_for_epoch_ms(times, epoch_ms)
+    if idx is None or not (0 <= idx < len(points)):
+        return
+    marker.location = points[idx]
+
+
+# Tapping a trajectory's time-series plot moves the marker along the track.
+plot_panel.set_time_callback(_on_plot_time)
 
 
 def _select_row(index):

@@ -6,6 +6,7 @@ from common.trajectory import (
     duration_hours,
     geodesic_length_km,
     latlon_names,
+    nearest_index_for_epoch_ms,
     track_bounds,
     track_points,
 )
@@ -54,3 +55,13 @@ def test_geodesic_length_positive():
     # ~moving NE across a few tenths of a degree -> tens of km, monotonic increase.
     length = geodesic_length_km(track_points(_traj_ds()))
     assert length > 0
+
+
+def test_nearest_index_for_epoch_ms():
+    times = pd.date_range("2022-01-01", periods=5, freq="h").values
+    epoch_ms = times[2].astype("datetime64[ms]").astype("int64")
+    assert nearest_index_for_epoch_ms(times, int(epoch_ms)) == 2
+    # a value 20 minutes past times[3] still snaps to index 3
+    near3 = times[3].astype("datetime64[ms]").astype("int64") + 20 * 60 * 1000
+    assert nearest_index_for_epoch_ms(times, int(near3)) == 3
+    assert nearest_index_for_epoch_ms(times, None) is None
