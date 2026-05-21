@@ -598,10 +598,13 @@ def _compute_page(start_cursor, offset):
     The keep predicate depends on the search source: featureType (probe) for
     OPeNDAP, WMS-protocol (metadata only) for WMS.
     """
-    keep = keep_with_wms if _wms_mode() else keep_with_feature_type
+    # WMS: cheap metadata check, scan a bit further to fill a page; OPeNDAP:
+    # each keep probes a dataset, so keep the scan tighter.
+    keep, cap = (keep_with_wms, 1000) if _wms_mode() else (keep_with_feature_type, 500)
     records, next_cursor, end, matches = collect_page(
         _csw_state["csw"], _csw_state["filter"],
-        start_cursor=start_cursor, page_size=CSW_PAGE_SIZE, fetch_size=CSW_PAGE_SIZE, keep=keep,
+        start_cursor=start_cursor, page_size=CSW_PAGE_SIZE, fetch_size=CSW_PAGE_SIZE,
+        keep=keep, max_scan=cap,
     )
     _csw_state["matches"] = matches
     return {"records": records, "start": start_cursor, "next": next_cursor, "end": end, "offset": offset}
@@ -630,15 +633,21 @@ def _run_search_from_page1():
 
 
 def _build_current_filter():
-    """Build the CSW filter from the widgets, with the source-specific narrowing.
+    """Build the CSW filter from the widgets, with source-specific narrowing.
 
-    WMS mode adds a required AnyText "WMS" term so we don't have to scan a huge
-    catalogue to find the (relatively few) WMS-backed records.
+    WMS records are identified by their OGC:WMS protocol, not their text — and
+    not every WMS record contains "WMS" in its metadata — so we filter them
+    client-side (keep_with_wms) over the bbox/time-bounded results. Only when
+    the WMS search is otherwise *unconstrained* do we add an AnyText "WMS"
+    pre-filter, so the default query still returns something without scanning a
+    multi-million-record catalogue from the top.
     """
     text = csw_anytext_input.value.strip() or None
     bbox = parse_bbox(csw_bbox_label.value)
     start, stop = _selected_datetime_range()
-    require = ["WMS"] if _wms_mode() else None
+    require = None
+    if _wms_mode() and not (text or bbox or (start and stop)):
+        require = ["WMS"]
     return build_filter(text=text, bbox=bbox, start=start, stop=stop, require=require)
 
 
