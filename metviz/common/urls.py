@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from functools import lru_cache
+
 import xarray as xr
 from pydantic import AnyHttpUrl, BaseModel, ValidationError
 
@@ -60,12 +62,16 @@ def detect_feature_type(ds: xr.Dataset) -> str | None:
     return None
 
 
+@lru_cache(maxsize=512)
 def feature_type_from_url(url: str) -> str | None:
     """Open *url* and return its CF ``featureType``, or ``None`` if unavailable.
 
     Times are not decoded (only attributes are needed). Returns ``None`` on any
     open/read failure rather than raising, so it is safe to call while
     filtering many candidate datasets.
+
+    Results are cached per process (keyed by URL) so paging back and forth
+    through CSW results does not re-open the same datasets.
     """
     try:
         with xr.open_dataset(str(url), decode_times=False) as ds:

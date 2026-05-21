@@ -194,6 +194,35 @@ def build_filter(*, text=None, bbox=None, start=None, stop=None, crs: str = DEFA
     return constraints
 
 
+def connect(endpoint: str, timeout: int = 60) -> CatalogueServiceWeb:
+    """Open a CSW connection (fetches GetCapabilities once).
+
+    Reuse the returned object across page requests so capabilities are not
+    re-fetched on every page turn.
+    """
+    return CatalogueServiceWeb(endpoint, timeout=timeout)
+
+
+def get_page(csw, filter_list, *, startposition: int = 1, pagesize: int = 10):
+    """Fetch one page of CSW records.
+
+    Returns ``(records, results)`` where *records* is a list of
+    :class:`CswRecord` and *results* is the CSW result summary dict
+    (``matches``, ``returned``, ``nextrecord``). Pair with
+    :func:`resolve_feature_type` to label/filter just this page — far cheaper
+    than probing every match up front.
+    """
+    sortby = SortBy([SortProperty("dc:title", "ASC")])
+    csw.getrecords2(
+        constraints=filter_list,
+        startposition=startposition,
+        maxrecords=pagesize,
+        sortby=sortby,
+    )
+    records = [_to_record(r) for r in csw.records.values()]
+    return records, dict(csw.results)
+
+
 def search(
     endpoint: str,
     *,
