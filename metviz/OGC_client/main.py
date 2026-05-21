@@ -385,9 +385,26 @@ def _clear_result_markers():
         _csw_highlight = None
 
 
+def _select_row(index):
+    """Select table row *index* (which in turn highlights the pin)."""
+    if 0 <= index < len(_csw_records):
+        csw_results_table.selection = [index]
+
+
+def _on_marker_click(index):
+    """Build an ipyleaflet click handler that selects the matching table row."""
+    def handler(**kwargs):
+        _select_row(index)
+    return handler
+
+
 def _add_result_markers(records):
-    """Drop a pin for each record that carries a location (bbox centre)."""
-    for record in records:
+    """Drop a pin for each record that carries a location (bbox centre).
+
+    Clicking a pin selects the matching table row (the table-selection watcher
+    then highlights it) — the table↔map link is bidirectional.
+    """
+    for index, record in enumerate(records):
         loc = record.location
         if loc is None:
             continue
@@ -401,6 +418,7 @@ def _add_result_markers(records):
             circle.popup = popup
         except Exception:
             pass
+        circle.on_click(_on_marker_click(index))
         lmap.add_layer(circle)
         _csw_result_markers.append(circle)
 
@@ -483,6 +501,10 @@ def _on_result_select(event):
             lmap.add_layer(_csw_highlight)
 
 
+# Zoom level used when flying to a record (2 levels further out than before).
+FLY_TO_ZOOM = 4
+
+
 def fly_to_selected(event):
     """Centre (fly) the map on the selected record's location."""
     record = _selected_record()
@@ -490,8 +512,7 @@ def fly_to_selected(event):
     if loc is None:
         return
     lmap.center = loc
-    if lmap.zoom < 6:
-        lmap.zoom = 6
+    lmap.zoom = FLY_TO_ZOOM
 
 
 def _update_pagination(page):
@@ -696,7 +717,7 @@ def get_marker_and_map():
     """
     center = (52.204793, 360.121558)
 
-    lmap = Map(center=center, zoom=15, height=500)
+    lmap = Map(center=center, zoom=15, height=500, scroll_wheel_zoom=True)
 
     marker = Marker(location=center, draggable=True)
     # Add custom properties
