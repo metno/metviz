@@ -1256,11 +1256,12 @@ _MERCATOR = "Web Mercator"
 _POLAR = "UPS North"
 _WGS84 = "WGS84 (lat/lon)"
 
-# UPS North (EPSG:5041 / 32661) CRS using the canonical GIBS polar tile matrix
-# set, so WMS layers picked as UPS North render here. Many polar WMS services
-# (e.g. adc-wms.met.no) advertise EPSG:32661/5041.
+# UPS North (EPSG:32661) CRS using the canonical GIBS polar tile matrix set, so
+# WMS layers picked as UPS North render here. Many polar WMS services (e.g.
+# adc-wms.met.no) advertise EPSG:32661/5041 (same projection; the name sets the
+# SRS sent to the WMS).
 _POLAR_CRS = {
-    "name": "EPSG:5041",
+    "name": "EPSG:32661",
     "custom": True,
     "proj4def": "+proj=stere +lat_0=90 +lat_ts=90 +lon_0=0 +k=0.994 +x_0=2000000 +y_0=2000000 +datum=WGS84 +units=m +no_defs",
     "origin": [-9036842.762500001, 9036842.762500001],
