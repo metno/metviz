@@ -30,6 +30,7 @@ services:
       # - ./metviz/mapdap:/mapdap
       # - ./metviz/tspt:/tspt
       - ./metviz/TSP:/TSP
+      - ./metviz/catalog:/Catalog
       # Shared helpers imported by both Panel apps as `from common... import ...`
       - ./metviz/common:/opt/metviz/common
       - ./metviz/OGC_client:/OGC_client
