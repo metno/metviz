@@ -556,7 +556,7 @@ def _compute_page(start_cursor, offset):
     """Build a page dict by collecting up to CSW_PAGE_SIZE featureType records."""
     records, next_cursor, end, matches = collect_page(
         _csw_state["csw"], _csw_state["filter"],
-        start_cursor=start_cursor, page_size=CSW_PAGE_SIZE, fetch_size=CSW_PAGE_SIZE, probe=True,
+        start_cursor=start_cursor, page_size=CSW_PAGE_SIZE, fetch_size=CSW_PAGE_SIZE,
     )
     _csw_state["matches"] = matches
     return {"records": records, "start": start_cursor, "next": next_cursor, "end": end, "offset": offset}

@@ -1,3 +1,4 @@
+from functools import partial
 from types import SimpleNamespace
 
 import pytest
@@ -9,8 +10,11 @@ from common.csw import (
     build_filter,
     collect_page,
     extract_opendap_url,
+    extract_wms_url,
     feature_type_from_record,
     get_page,
+    keep_with_feature_type,
+    keep_with_wms,
     parse_bbox,
     resolve_feature_type,
 )
@@ -50,12 +54,32 @@ def test_collect_page_keeps_only_featuretype_records_and_terminates():
     # and a short chunk, so the scan ends after one fetch.
     csw = _FakeCsw()
     records, next_cursor, end, matches = collect_page(
-        csw, [], start_cursor=1, page_size=10, fetch_size=10, probe=False
+        csw, [], start_cursor=1, page_size=10, fetch_size=10,
+        keep=partial(keep_with_feature_type, probe=False),
     )
     assert [r.identifier for r in records] == ["a"]
     assert records[0].feature_type == "timeseries"
     assert end is True          # chunk shorter than fetch_size -> exhausted
     assert matches == 42        # CSW total, not the filtered count
+
+
+def test_extract_wms_url_by_protocol_and_url():
+    assert extract_wms_url(
+        [{"scheme": "OGC:WMS", "url": "https://x/thredds/wms/a?SERVICE=WMS&REQUEST=GetCapabilities"}]
+    ) == "https://x/thredds/wms/a?SERVICE=WMS&REQUEST=GetCapabilities"
+    # matched by URL even when the protocol is generic
+    assert extract_wms_url([{"scheme": "WWW:LINK", "url": "https://x/geoserver/wms?service=WMS"}])
+    # OPeNDAP-only record has no WMS
+    assert extract_wms_url([{"scheme": "OPeNDAP:OPeNDAP", "url": "https://x/dodsC/a.nc"}]) is None
+    assert extract_wms_url([]) is None
+
+
+def test_keep_with_wms_is_metadata_only():
+    wms_rec = CswRecord("a", "A", references=[{"scheme": "OGC:WMS", "url": "https://x/wms?service=WMS"}])
+    plain_rec = CswRecord("b", "B", references=[{"scheme": "download", "url": "https://x/a.nc"}])
+    assert keep_with_wms(wms_rec) is True
+    assert keep_with_wms(plain_rec) is False
+    assert wms_rec.wms_url == "https://x/wms?service=WMS"
 
 
 def test_build_filter_single_text_term_not_wrapped_in_or():
