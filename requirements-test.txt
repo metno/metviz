@@ -7,6 +7,9 @@ xarray
 pydantic
 requests
 itsdangerous
+# CSW catalogue search (common.csw)
+owslib
+geolinks
 # Viz stack — needed to import the panel/holoviews-dependent modules under test.
 panel
 hvplot

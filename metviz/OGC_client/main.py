@@ -32,18 +32,30 @@ This file is intended for exploratory/demo use and is kept small and
 imperative; functions are documented with docstrings to aid maintenance.
 """
 
+import os
+import sys
+
+# The shared `common` package is mounted at /opt/metviz/common in the container.
+# Ensure its parent is importable regardless of PYTHONPATH (see TSP/main.py).
+# Override with METVIZ_COMMON_ROOT if the deployment mounts it elsewhere.
+_COMMON_ROOT = os.environ.get("METVIZ_COMMON_ROOT", "/opt/metviz")
+if _COMMON_ROOT not in sys.path:
+    sys.path.insert(0, _COMMON_ROOT)
+
+import pandas as pd
 import panel as pn
 from bokeh.models import Button
+from common.csw import parse_bbox, search_with_feature_type
+from common.redirect import Redirector
+from common.routing import target_app_for
 from ipyleaflet import DrawControl, GeoJSON, LayersControl, Map, Marker
 from ipywidgets import HTML
 
-pn.extension("ipywidgets", sizing_mode="stretch_width")
+pn.extension("ipywidgets", "tabulator", sizing_mode="stretch_width")
 
 
 ACCENT_BASE_COLOR = "#003366"
 
-import dateutil
-import dateutil.parser
 import owslib.wms
 
 # --- WMS GetCapabilities UI ---
@@ -124,8 +136,6 @@ def add_selected_wms_layers(event):
     selected_layers = wms_layers_selector.value
     if not url or not selected_layers:
         return
-    # Use a CORS proxy for the WMS URL
-    "https://corsproxy.io/?" + url
     for layer_name in selected_layers:
         layer_name = layer_name[1]  # Extract actual layer name
         wms_layer = WMSLayer(
@@ -235,18 +245,35 @@ csw_output = pn.widgets.TextAreaInput(name='CSW Output', placeholder='CSW Query 
 csw_output.visible = False
 csw_output.disabled = True
 
+# --- Search results -> visualize routing ---
+# Redirector navigates the browser to /TSP|/TRJ for the selected dataset.
+csw_redirector = Redirector()
+csw_results_table = pn.widgets.Tabulator(
+    pd.DataFrame(columns=["title", "featureType", "url"]),
+    name="Results",
+    disabled=True,
+    selectable=1,
+    show_index=False,
+    visible=False,
+    height=260,
+    sizing_mode="stretch_width",
+)
+csw_visualize_button = pn.widgets.Button(name="Visualize selected", button_type="primary", visible=False)
+# Backing CswRecord list for the rows currently shown in the table.
+_csw_records: list = []
+
 
 csw_dialog = pn.Column(
+    csw_redirector,
     pn.Row(csw_url_input, csw_url_reset_button),
     pn.Row(csw_anytext_input, csw_anytext_reset_button),
     pn.Row(csw_bbox_label, csw_bbox_reset_button),
     pn.Row(csw_datetime_picker_start, csw_datetime_picker_end, csw_datetime_reset_button),
     pn.Row(csw_query_button, csw_clear_button),
     csw_error_pane,
-    # csw_layers_pane,
-    # csw_layers_selector,
-    csw_add_button,
     csw_output,
+    csw_results_table,
+    csw_visualize_button,
     visible=False,
     margin=(10, 10),
     sizing_mode="stretch_width",
@@ -256,56 +283,84 @@ csw_dialog = pn.Column(
 
 
 
-def process_datetime(event):
-    """Process a datetime picker value into an ISO 8601 string.
+def _selected_datetime_range():
+    """Return (start, stop) datetimes if both pickers are set, else (None, None)."""
+    start = csw_datetime_picker_start.value
+    stop = csw_datetime_picker_end.value
+    if start and stop:
+        return start, stop
+    return None, None
 
-    Args:
-        dt_picker (pn.widgets.DatetimePicker): The datetime picker widget.
 
-    Returns:
-        str: The ISO 8601 formatted datetime string, or None if no value.
-    """
-    time_bounds = []
-    for i in [csw_datetime_picker_start, csw_datetime_picker_end]:
-        dt_value = i.value
-        if dt_value is None:
-            return None
-        if isinstance(dt_value, str):
-            dt = dateutil.parser.parse(dt_value)
-        else:
-            dt = dt_value
-        time_bounds.append(dt.isoformat())
-    print("Processed datetime bounds:", time_bounds)
-    #csw_output.value = f"CSW Query Time Bounds: {time_bounds}"
-    #csw_output.visible = True
-    return time_bounds
+def _show_results(records):
+    """Render filtered CSW records into the selectable results table."""
+    global _csw_records
+    _csw_records = records
+    if not records:
+        csw_results_table.visible = False
+        csw_visualize_button.visible = False
+        csw_output.value = "No records with a featureType matched the query.\n"
+        csw_output.visible = True
+        return
+    csw_results_table.value = pd.DataFrame(
+        [{"title": r.title, "featureType": r.feature_type, "url": r.opendap_url} for r in records]
+    )
+    csw_results_table.selection = []
+    csw_results_table.visible = True
+    csw_visualize_button.visible = True
+    csw_output.value = (
+        f"Found {len(records)} record(s) with a featureType. "
+        "Select one and click 'Visualize selected'.\n"
+    )
+    csw_output.visible = True
+
 
 def process_query(event):
-    """Process the CSW query based on user inputs.
+    """Run the CSW query (space / time / text), keep only records that resolve
+    to a CF featureType, and show them for selection.
 
     Args:
         event: Panel click event (ignored; present to wire up as a callback).
     """
-    csw_output.value = "Processing CSW Query...\n"
-    csw_output.visible = True
     csw_error_pane.visible = False
-    # Gather inputs
-    csw_url = csw_url_input.value.strip()
-    anytext = csw_anytext_input.value.strip()
-    bbox = csw_bbox_label.value.strip()
-    time_bounds = process_datetime(event)
-    # Here you would implement the actual CSW query logic using the inputs
-    # For demonstration, we just print the gathered inputs
-    csw_output.value += f"CSW URL: {csw_url}\n"
-    csw_output.value += f"Any Text: {anytext}\n"
-    csw_output.value += f"BBOX: {bbox}\n"
-    csw_output.value += f"Time Bounds: {time_bounds}\n"
-    # Simulate successful query result
-    csw_output.value += "CSW Query completed successfully.\n"
-    # Show add button for layers (in real implementation, populate selector)
-    csw_add_button.visible = True
+    csw_output.value = "Searching catalogue...\n"
+    csw_output.visible = True
+    endpoint = csw_url_input.value.strip()
+    if not endpoint:
+        csw_error_pane.object = "Please enter a CSW endpoint URL."
+        csw_error_pane.visible = True
+        csw_output.visible = False
+        return
+    text = csw_anytext_input.value.strip() or None
+    bbox = parse_bbox(csw_bbox_label.value)
+    start, stop = _selected_datetime_range()
+    try:
+        records = search_with_feature_type(
+            endpoint, text=text, bbox=bbox, start=start, stop=stop, probe=True
+        )
+    except Exception as exc:
+        csw_error_pane.object = f"CSW query failed: {exc}"
+        csw_error_pane.visible = True
+        csw_output.visible = False
+        return
+    _show_results(records)
+
+
+def visualize_selected(event):
+    """Redirect to the matching app (/TSP or /TRJ) for the selected result."""
+    selection = csw_results_table.selection
+    if not selection:
+        return
+    record = _csw_records[selection[0]]
+    if not record.opendap_url:
+        csw_error_pane.object = "Selected record has no OPeNDAP URL."
+        csw_error_pane.visible = True
+        return
+    csw_redirector.redirect(f"/{target_app_for(record.feature_type)}?url={record.opendap_url}")
+
 
 csw_query_button.on_click(process_query)
+csw_visualize_button.on_click(visualize_selected)
 
 def clear_csw_results(event):
     """Clear CSW query results and reset relevant widgets.
