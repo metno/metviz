@@ -96,7 +96,9 @@ wms_toggle.param.watch(toggle_wms_dialog, "value")
 
 csw_toggle = pn.widgets.Toggle(name="Show CSW Loader", button_type="primary", value=False, visible=False)
 
-csw_url_input = pn.widgets.TextInput(name="CSW edpoint URL", placeholder="Enter CSW URL")
+csw_url_input = pn.widgets.TextInput(
+    name="CSW endpoint URL", placeholder="Enter CSW URL", value="https://nbs.csw.met.no"
+)
 csw_url_reset_button = pn.widgets.Button(name="Reset CSW URL", button_type="warning", width=120)
 
 # add a button to perform the CSW query
@@ -625,6 +627,19 @@ def _run_search_from_page1():
     _show_page(0)
 
 
+def _build_current_filter():
+    """Build the CSW filter from the widgets, with the source-specific narrowing.
+
+    WMS mode adds a required AnyText "WMS" term so we don't have to scan a huge
+    catalogue to find the (relatively few) WMS-backed records.
+    """
+    text = csw_anytext_input.value.strip() or None
+    bbox = parse_bbox(csw_bbox_label.value)
+    start, stop = _selected_datetime_range()
+    require = ["WMS"] if _wms_mode() else None
+    return build_filter(text=text, bbox=bbox, start=start, stop=stop, require=require)
+
+
 def process_query(event):
     """Connect to the CSW, build the space/time/text filter, and load page 1.
 
@@ -640,12 +655,9 @@ def process_query(event):
         csw_error_pane.visible = True
         csw_output.visible = False
         return
-    text = csw_anytext_input.value.strip() or None
-    bbox = parse_bbox(csw_bbox_label.value)
-    start, stop = _selected_datetime_range()
     try:
         _csw_state["csw"] = connect(endpoint)
-        _csw_state["filter"] = build_filter(text=text, bbox=bbox, start=start, stop=stop)
+        _csw_state["filter"] = _build_current_filter()
     except Exception as exc:
         csw_error_pane.object = f"CSW query failed: {exc}"
         csw_error_pane.visible = True
@@ -662,6 +674,8 @@ def _on_source_change(event):
     plot_panel.clear()
     _clear_trajectory()
     if _csw_state["csw"] is not None:
+        # The filter differs by source (WMS adds an AnyText "WMS" pre-filter).
+        _csw_state["filter"] = _build_current_filter()
         _run_search_from_page1()
 
 
