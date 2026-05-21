@@ -67,12 +67,17 @@ class WmsLoader:
         ipyleaflet CRS to add the layer with (and switch the map to a matching
         projection as a side effect), or ``None`` if no map supports that CRS.
         When ``None`` is returned the layer is not added and a message is shown.
+    on_add : callable(layer, name) -> None, optional
+        Called for each built WMS layer instead of adding it to the map
+        directly, so a layer manager can own placement/ordering. When omitted,
+        the loader adds the layer to the map itself.
     """
 
-    def __init__(self, *, get_map, get_crs=None, resolve_crs=None):
+    def __init__(self, *, get_map, get_crs=None, resolve_crs=None, on_add=None):
         self._get_map = get_map
         self._get_crs = get_crs
         self._resolve_crs = resolve_crs
+        self._on_add = on_add
         self.crs_options: list[str] = []
         self.url_input = pn.widgets.TextInput(name="WMS GetCapabilities URL", placeholder="Enter WMS URL")
         self.load_button = pn.widgets.Button(name="Load capabilities", button_type="success")
@@ -157,6 +162,10 @@ class WmsLoader:
         self.error.visible = False
         lmap = self._get_map()
         for name in names:
-            lmap.add_layer(
-                WMSLayer(url=getmap_url, layers=name, name=name, crs=crs, transparent=True, format="image/png")
+            layer = WMSLayer(
+                url=getmap_url, layers=name, name=name, crs=crs, transparent=True, format="image/png"
             )
+            if self._on_add is not None:
+                self._on_add(layer, name)
+            else:
+                lmap.add_layer(layer)

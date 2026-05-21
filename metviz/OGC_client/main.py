@@ -60,6 +60,7 @@ from common.csw import (
     parse_bbox,
 )
 from common.data import load_data
+from common.layer_manager import LayerManager
 from common.plot_panel import DatasetPlotPanel
 from common.trajectory import nearest_index_for_time, track_bounds, track_points
 from common.wms import WmsLoader
@@ -91,10 +92,12 @@ ACCENT_BASE_COLOR = "#003366"
 # Dormant for now (the toggle is hidden); the layer CRS tracks the live map so
 # it works across projection switches.
 wms_toggle = pn.widgets.Toggle(name="Show WMS Loader", button_type="primary", value=False, visible=False)
+layer_panel = LayerManager(get_map=lambda: lmap)
 wms_loader = WmsLoader(
     get_map=lambda: lmap,
     get_crs=lambda: lmap.crs,
     resolve_crs=lambda epsg: _resolve_wms_crs(epsg),
+    on_add=lambda layer, name: layer_panel.add(layer, name),
 )
 # Shown in the detail card when the search source is WMS (swapped in by
 # _on_source_change), so it stays visible; not placed in any layout otherwise.
@@ -736,7 +739,9 @@ def process_query(event):
 
 def _on_source_change(event):
     """Swap the detail card (plot vs WMS picker) and re-run the search."""
-    detail_pane[:] = [wms_loader.layout if _wms_mode() else plot_panel.layout]
+    detail_pane[:] = (
+        [wms_loader.layout, layer_panel.layout] if _wms_mode() else [plot_panel.layout]
+    )
     plot_panel.clear()
     _clear_trajectory()
     if _csw_state["csw"] is not None:
@@ -1359,6 +1364,9 @@ def _rebuild_map(projection):
     lmap.add_control(draw)
     lmap.on_interaction(on_mouse_move)
     map_pane.object = lmap
+    # The fresh map carries no overlay layers; WMS layers are CRS-specific and
+    # don't survive a projection change, so reset the layer panel.
+    layer_panel.clear()
     _reapply_overlays()
 
 
@@ -1434,7 +1442,7 @@ map_card = pn.Card(
 # Detail card content swaps between the inline plot (OPeNDAP) and the WMS layer
 # picker (WMS) as the search source changes.
 detail_pane = pn.Column(
-    wms_loader.layout if _wms_mode() else plot_panel.layout,
+    *([wms_loader.layout, layer_panel.layout] if _wms_mode() else [plot_panel.layout]),
     sizing_mode="stretch_both",
 )
 plot_card = pn.Card(
