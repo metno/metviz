@@ -93,6 +93,7 @@ def plot(
             plot_widget = masked.hvplot.line(**axis_arguments)
         if len(list(plot_widget)) >= 2:
             plot_widget[0].height = 90
+        _apply_orientation(plot_widget, invert_yaxis=invert_yaxis, swap_axes=swap_axes)
         return plot_widget
 
     # --- profile / timeSeriesProfile ---------------------------------------
@@ -122,10 +123,7 @@ def plot(
                 y=var,
                 **{k: v for k, v in axis_arguments.items() if k != "x"},
             )
-        if invert:
-            plot_widget[-1].object.opts(invert_yaxis=True)
-        if swap_axes:
-            plot_widget[-1].object.opts(invert_axes=True)
+        _apply_orientation(plot_widget, invert_yaxis=invert, swap_axes=swap_axes)
     except Exception as exc:
         print(f"plot() failed (var={var!r}, dimension={dimension!r}): {exc} — falling back to default axis")
         axis_arguments.pop("x", None)
@@ -133,6 +131,36 @@ def plot(
 
     plot_widget[0].height = 60
     return plot_widget
+
+
+def _apply_orientation(plot_widget, *, invert_yaxis: bool = False, swap_axes: bool = False) -> None:
+    """Apply y-axis inversion and/or axis swap to a hvplot result, in place.
+
+    Works for both the timeSeries and profile branches: the hvplot result may
+    be a Panel layout (a HoloViews pane plus slider widgets, when extra
+    dimensions create widgets) or a bare HoloViews object (no widgets). Opts
+    are applied before the object is rendered.
+    """
+    if not (invert_yaxis or swap_axes):
+        return
+    opts = {}
+    if invert_yaxis:
+        opts["invert_yaxis"] = True
+    if swap_axes:
+        opts["invert_axes"] = True
+
+    # Panel layouts expose `.objects`; the plot is the pane carrying `.object`.
+    pane = None
+    if hasattr(plot_widget, "objects"):
+        for obj in reversed(list(plot_widget)):
+            if getattr(obj, "object", None) is not None:
+                pane = obj
+                break
+    try:
+        target = pane.object if pane is not None else plot_widget
+        target.opts(**opts)
+    except Exception as exc:
+        print(f"could not apply axis orientation: {exc}")
 
 
 def _should_invert_yaxis(ds: xr.Dataset, var: str, dimension: str) -> bool:

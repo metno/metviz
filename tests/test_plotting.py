@@ -2,6 +2,7 @@ import numpy as np
 import pandas as pd
 import xarray as xr
 from plotting import (
+    _apply_orientation,
     _datetime_coords,
     _first_var,
     _resolve_title,
@@ -60,3 +61,50 @@ def test_plot_quadmesh_returns_object_for_2d():
 
 def test_plot_quadmesh_returns_none_for_1d(timeseries_ds):
     assert plot_quadmesh("air_temperature", timeseries_ds) is None
+
+
+# --- axis orientation dispatch (invert / swap) -----------------------------
+
+
+class _RecordingPlot:
+    """Stand-in for a HoloViews object: records the opts applied to it."""
+
+    def __init__(self):
+        self.applied = None
+
+    def opts(self, **kw):
+        self.applied = kw
+        return self
+
+
+class _Pane:
+    def __init__(self, obj):
+        self.object = obj
+
+
+class _Layout(list):
+    """Stand-in for a Panel layout: iterable and exposes `.objects`."""
+
+    @property
+    def objects(self):
+        return list(self)
+
+
+def test_apply_orientation_noop_without_flags():
+    plot = _RecordingPlot()
+    _apply_orientation(plot)
+    assert plot.applied is None
+
+
+def test_apply_orientation_on_bare_object():
+    plot = _RecordingPlot()
+    _apply_orientation(plot, invert_yaxis=True, swap_axes=True)
+    assert plot.applied == {"invert_yaxis": True, "invert_axes": True}
+
+
+def test_apply_orientation_on_panel_layout():
+    # A layout with a slider-like item (no .object) and the plot pane.
+    plot = _RecordingPlot()
+    layout = _Layout([_Pane(None), _Pane(plot)])
+    _apply_orientation(layout, invert_yaxis=True)
+    assert plot.applied == {"invert_yaxis": True}
