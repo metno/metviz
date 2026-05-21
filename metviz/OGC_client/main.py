@@ -790,10 +790,10 @@ lat_label = pn.widgets.StaticText(
 #     lon_label.styles = new_styles
 #     lat_label.styles = new_styles
 
-json_widget = pn.pane.JSON({}, height=75)
+json_widget = pn.pane.JSON({}, height=75, visible=False)
 
 
-add_marker_checkbox = pn.widgets.Checkbox(name="Enable Add Marker", value=False)
+add_marker_checkbox = pn.widgets.Checkbox(name="Enable Add Marker", value=False, visible=False)
 
 def print_marker_properties(event, marker_obj):
     """Callback invoked when a marker's location changes.
