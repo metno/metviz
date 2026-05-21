@@ -3,6 +3,9 @@ from types import SimpleNamespace
 import pytest
 from common.csw import (
     CswRecord,
+    _bbox_tuple,
+    _iso_keywords,
+    _iso_references,
     build_filter,
     collect_page,
     extract_opendap_url,
@@ -135,6 +138,33 @@ def test_resolve_feature_type_from_metadata():
 def test_resolve_feature_type_no_metadata_no_probe():
     record = CswRecord(identifier="x", title="t", subjects=["misc"])
     assert resolve_feature_type(record, probe=False) is None
+
+
+def test_iso_bbox_tuple_from_geographic_bounding_box():
+    box = SimpleNamespace(minx="10", miny="60", maxx="12", maxy="62")
+    assert _bbox_tuple(box) == (10.0, 60.0, 12.0, 62.0)
+    assert _bbox_tuple(None) is None
+
+
+def test_iso_keywords_flattens_and_includes_topics():
+    ident = SimpleNamespace(
+        keywords=[SimpleNamespace(keywords=[
+            SimpleNamespace(name="timeSeries"),
+            SimpleNamespace(name="ocean"),
+        ])],
+        topiccategory=["climatologyMeteorologyAtmosphere"],
+    )
+    assert _iso_keywords(ident) == ["timeSeries", "ocean", "climatologyMeteorologyAtmosphere"]
+
+
+def test_iso_references_from_online_resources():
+    md = SimpleNamespace(distribution=SimpleNamespace(online=[
+        SimpleNamespace(protocol="OPeNDAP:OPeNDAP", url="https://x/dodsC/d.nc"),
+    ]))
+    refs = _iso_references(md)
+    assert refs == [{"scheme": "OPeNDAP:OPeNDAP", "url": "https://x/dodsC/d.nc"}]
+    # and the OPeNDAP extractor recognises it
+    assert extract_opendap_url(refs) == "https://x/dodsC/d.nc"
 
 
 def test_cswrecord_location_centre_of_bbox():
