@@ -1,0 +1,262 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>A Standards-Based Explorer for Environmental Data</title>
+<style>
+  :root {
+    --bg: #0d1b2a;
+    --panel: #ffffff;
+    --ink: #1b2a3a;
+    --muted: #5b6b7b;
+    --accent: #0a6cbd;
+    --accent2: #00838f;
+    --ok: #1b8a5a;
+    --warn: #b5651d;
+    --line: #d9e2ec;
+  }
+  * { box-sizing: border-box; }
+  html, body {
+    margin: 0; height: 100%;
+    font-family: -apple-system, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+    background: var(--bg); color: var(--ink);
+  }
+  #deck { height: 100vh; width: 100vw; position: relative; overflow: hidden; }
+  .slide {
+    position: absolute; inset: 0; display: none;
+    padding: 6vh 8vw; flex-direction: column; justify-content: center;
+    background: var(--panel);
+    animation: fade .25s ease;
+  }
+  .slide.active { display: flex; }
+  @keyframes fade { from { opacity: 0; transform: translateY(8px);} to {opacity:1; transform:none;} }
+
+  .kicker { color: var(--accent2); font-weight: 700; letter-spacing: .12em;
+            text-transform: uppercase; font-size: clamp(.7rem, 1.2vw, .95rem); margin-bottom: .6rem; }
+  h1 { font-size: clamp(1.9rem, 4.6vw, 3.4rem); line-height: 1.08; margin: 0 0 1rem; color: var(--bg); }
+  h2 { font-size: clamp(1.5rem, 3.4vw, 2.4rem); line-height: 1.12; margin: 0 0 1.4rem; color: var(--bg); }
+  .sub { font-size: clamp(1rem, 1.9vw, 1.4rem); color: var(--muted); margin: 0 0 1rem; }
+  ul { font-size: clamp(1rem, 1.9vw, 1.45rem); line-height: 1.5; margin: .3rem 0; padding-left: 1.3em; }
+  li { margin: .5rem 0; }
+  li strong { color: var(--bg); }
+  .lead { border-left: 6px solid var(--accent); padding-left: 1rem; }
+
+  table { border-collapse: collapse; font-size: clamp(.95rem, 1.8vw, 1.35rem); margin-top: .4rem; }
+  th, td { text-align: left; padding: .55rem 1.1rem; border-bottom: 1px solid var(--line); }
+  th { color: var(--accent); border-bottom: 2px solid var(--accent); }
+  td:first-child { font-weight: 700; color: var(--bg); white-space: nowrap; }
+
+  .ok li::marker { content: "✅ "; }
+  .warn li::marker { content: "⚠️ "; }
+  .fair b { color: var(--accent); }
+
+  .title-slide { background: linear-gradient(150deg, #0d1b2a 0%, #0a3d62 60%, #0a6cbd 100%); color: #fff; }
+  .title-slide h1 { color: #fff; }
+  .title-slide .sub { color: #cfe3f5; }
+  .title-slide .kicker { color: #7fd0e0; }
+
+  footer {
+    position: absolute; bottom: 2.4vh; left: 8vw; right: 8vw;
+    display: flex; justify-content: space-between; align-items: center;
+    color: var(--muted); font-size: .8rem;
+  }
+  .title-slide footer { color: #9fc4e0; }
+  .progress { position: absolute; top: 0; left: 0; height: 4px; background: var(--accent); transition: width .25s; }
+
+  .notes {
+    margin-top: 1.4rem; padding: .8rem 1rem; background: #f4f8fc; border: 1px solid var(--line);
+    border-radius: 8px; color: var(--muted); font-size: clamp(.85rem, 1.4vw, 1.05rem); display: none;
+  }
+  .notes.show { display: block; }
+  .notes b { color: var(--accent2); }
+
+  .hint { position: absolute; bottom: 2.4vh; left: 50%; transform: translateX(-50%);
+          color: var(--muted); font-size: .72rem; }
+  .title-slide .hint { color: #9fc4e0; }
+</style>
+</head>
+<body>
+<div id="deck">
+
+  <!-- 1 -->
+  <section class="slide title-slide">
+    <div class="kicker">Metadata · CF Conventions · Open Standards</div>
+    <h1>A Standards-Based Explorer for Environmental Data</h1>
+    <p class="sub">Finding, understanding, and visualizing data through its metadata</p>
+    <ul>
+      <li>Search a data catalogue by <strong>where</strong>, <strong>when</strong>, and <strong>what</strong> — then view the data in the browser.</li>
+      <li>Built entirely on <strong>open standards</strong>, not custom formats.</li>
+    </ul>
+    <div class="notes"><b>Say:</b> A small tool with a big idea — if data is described well, software can find it and show it automatically, with no special handling per dataset.</div>
+  </section>
+
+  <!-- 2 -->
+  <section class="slide">
+    <div class="kicker">Motivation</div>
+    <h2>We have lots of data. Using it is the hard part.</h2>
+    <ul class="lead">
+      <li>Environmental data lives in many archives, formats, and projections.</li>
+      <li>Users don't want files — they want to <strong>find the right thing</strong> and <strong>look at it</strong>.</li>
+      <li>The gap between "data exists" and "data is usable" is <strong>metadata</strong>.</li>
+    </ul>
+    <div class="notes"><b>Say:</b> The bottleneck isn't storage — it's discovery and interpretation. Metadata is the bridge, and this project is a test of how well that bridge holds.</div>
+  </section>
+
+  <!-- 3 -->
+  <section class="slide">
+    <div class="kicker">What it does</div>
+    <h2>Search → understand → visualize, all from the catalogue</h2>
+    <ul>
+      <li><strong>Search</strong> by area (draw a box on a map), time range, and free text.</li>
+      <li>The tool reads each result's <strong>metadata</strong> to decide what it is and how to show it.</li>
+      <li><strong>Visualize</strong>: plot a time series or profile inline, or overlay a map layer.</li>
+    </ul>
+    <div class="notes"><b>Say:</b> The user never touches a file path or a format. They draw a box, pick a date, and the catalogue's metadata does the rest.</div>
+  </section>
+
+  <!-- 4 -->
+  <section class="slide">
+    <div class="kicker">Foundations</div>
+    <h2>Built on open standards — it speaks the community's languages</h2>
+    <table>
+      <tr><th>Standard</th><th>Role here</th></tr>
+      <tr><td>CSW</td><td>Catalogue Service for the Web — search the catalogue</td></tr>
+      <tr><td>ISO 19115 / 19139</td><td>The metadata records themselves</td></tr>
+      <tr><td>OGC WMS</td><td>Ready-made map layers</td></tr>
+      <tr><td>OPeNDAP / THREDDS</td><td>Direct access to the underlying data</td></tr>
+      <tr><td>CF Conventions</td><td>Tells us the <em>kind</em> of measurement</td></tr>
+    </table>
+    <div class="notes"><b>Say:</b> Every row is an international open standard. Because we don't invent formats, this works with any compliant catalogue — not just ours.</div>
+  </section>
+
+  <!-- 5 -->
+  <section class="slide">
+    <div class="kicker">The key idea</div>
+    <h2>The metadata decides the experience</h2>
+    <ul class="lead">
+      <li><strong>CF "featureType"</strong> (time series, profile, trajectory…) tells the tool <strong>how</strong> to plot the data — automatically.</li>
+      <li><strong>Service links</strong> in the record (WMS, OPeNDAP) tell it <strong>how</strong> to access the data.</li>
+      <li>Result: <strong>no per-dataset programming.</strong> Good metadata = instant usability.</li>
+    </ul>
+    <div class="notes"><b>Say:</b> A field called "featureType" literally chooses the right chart. When metadata is rich, the tool just works. When it isn't, the tool can't help — which is a powerful diagnostic.</div>
+  </section>
+
+  <!-- 6 -->
+  <section class="slide">
+    <div class="kicker">Strengths</div>
+    <h2>What's genuinely good</h2>
+    <ul class="ok">
+      <li><strong>Interoperable</strong> — open standards, no vendor or format lock-in.</li>
+      <li><strong>Metadata-driven</strong> — behavior comes from the catalogue, not hard-coded.</li>
+      <li><strong>No data duplication</strong> — reads existing archives in place.</li>
+      <li><strong>Polar-ready</strong> — supports Arctic projections (Svalbard, UPS North) most web maps ignore.</li>
+      <li><strong>Lightweight</strong> — runs in a browser, already live in our infrastructure.</li>
+    </ul>
+  </section>
+
+  <!-- 7 -->
+  <section class="slide">
+    <div class="kicker">Weaknesses & hard lessons</div>
+    <h2>Honest limitations — most are about data, not code</h2>
+    <ul class="warn">
+      <li><strong>Only as good as the metadata.</strong> Missing featureType or service links = invisible to the tool.</li>
+      <li><strong>Catalogue noise.</strong> Millions of fine-grained satellite records make useful datasets sparse and searches heavy.</li>
+      <li><strong>Inconsistent catalogues.</strong> One returned <em>different results for the same query</em> — a server-side compliance gap.</li>
+      <li><strong>Projection fragmentation.</strong> Services advertise different coordinate systems; polar data needs care.</li>
+      <li><strong>Performance depends on remote servers</strong>, not on us.</li>
+    </ul>
+    <div class="notes"><b>Say:</b> The most interesting finding: most of our problems were metadata-quality problems, not software problems. The tool is a mirror held up to our data management.</div>
+  </section>
+
+  <!-- 8 -->
+  <section class="slide">
+    <div class="kicker">Response</div>
+    <h2>Turning weaknesses into guardrails</h2>
+    <ul>
+      <li>Guard against runaway queries — require a filter; warn when a search is too broad.</li>
+      <li>Search results several times faster by querying the catalogue <strong>in parallel</strong>.</li>
+      <li>Bundled our own <strong>Norwegian + Svalbard coastline</strong> where no standard polar basemap existed.</li>
+      <li>A <strong>layer manager</strong> to control map overlays (order, transparency, visibility).</li>
+    </ul>
+    <div class="notes"><b>Say:</b> Each limitation pushed a concrete improvement — several are reusable building blocks for other tools.</div>
+  </section>
+
+  <!-- 9 -->
+  <section class="slide">
+    <div class="kicker">Status</div>
+    <h2>Where we are today</h2>
+    <ul>
+      <li>🟢 <strong>Usable working prototype</strong>, deployed in our operational environment.</li>
+      <li>🟢 Refactored into <strong>reusable, shared components</strong> (search, plotting, maps).</li>
+      <li>🟢 <strong>Automated test suite</strong> (130+ tests) for confidence in changes.</li>
+      <li>🟡 Validated mainly against met.no catalogues — broader testing pending.</li>
+    </ul>
+  </section>
+
+  <!-- 10 -->
+  <section class="slide">
+    <div class="kicker">Roadmap</div>
+    <h2>Further development</h2>
+    <ul>
+      <li><strong>Collection-level search</strong> (datasets, not millions of granules) for speed and clarity.</li>
+      <li><strong>Caching &amp; smarter ranking</strong> of the most relevant results.</li>
+      <li><strong>Richer visualization</strong>: vertical profiles, time animation of map layers, downloads.</li>
+      <li><strong>A metadata feedback loop</strong> — flag records missing featureType/links to improve the catalogue itself.</li>
+      <li><strong>Wider reach</strong>: point it at other national/European catalogues.</li>
+    </ul>
+  </section>
+
+  <!-- 11 -->
+  <section class="slide title-slide">
+    <div class="kicker">Why it matters</div>
+    <h2>A practical test of FAIR data</h2>
+    <ul class="fair">
+      <li>The tool only works because data is <b>F</b>indable, <b>A</b>ccessible, <b>I</b>nteroperable, <b>R</b>eusable.</li>
+      <li>Where it struggles, it <strong>points directly at metadata we can improve</strong>.</li>
+      <li>Open standards + good metadata = data that serves people, not just storage.</li>
+    </ul>
+    <div class="notes"><b>Say:</b> If you take one thing away — investing in metadata quality and open standards pays off directly in tools like this. The software is the easy part; the metadata is the asset.</div>
+  </section>
+
+</div>
+
+<div class="progress" id="progress"></div>
+<div class="hint">← → / Space to navigate · <b>N</b> toggles speaker notes · <b>F</b> fullscreen</div>
+
+<script>
+  var slides = Array.prototype.slice.call(document.querySelectorAll('.slide'));
+  var i = 0, notesOn = false;
+  function render() {
+    slides.forEach(function (s, n) { s.classList.toggle('active', n === i); });
+    document.getElementById('progress').style.width = ((i + 1) / slides.length * 100) + '%';
+    var active = slides[i];
+    var f = active.querySelector('footer');
+    if (!f) {
+      f = document.createElement('footer');
+      f.innerHTML = '<span>Standards-Based Data Explorer</span><span>' + (i + 1) + ' / ' + slides.length + '</span>';
+      active.appendChild(f);
+    }
+    var note = active.querySelector('.notes');
+    if (note) note.classList.toggle('show', notesOn);
+  }
+  function go(d) { i = Math.max(0, Math.min(slides.length - 1, i + d)); render(); }
+  document.addEventListener('keydown', function (e) {
+    if (e.key === 'ArrowRight' || e.key === ' ' || e.key === 'PageDown') { go(1); e.preventDefault(); }
+    else if (e.key === 'ArrowLeft' || e.key === 'PageUp') { go(-1); }
+    else if (e.key === 'Home') { i = 0; render(); }
+    else if (e.key === 'End') { i = slides.length - 1; render(); }
+    else if (e.key === 'n' || e.key === 'N') { notesOn = !notesOn; render(); }
+    else if (e.key === 'f' || e.key === 'F') {
+      if (!document.fullscreenElement) document.documentElement.requestFullscreen();
+      else document.exitFullscreen();
+    }
+  });
+  document.getElementById('deck').addEventListener('click', function (e) {
+    // click right half = next, left half = previous
+    go(e.clientX > window.innerWidth / 2 ? 1 : -1);
+  });
+  render();
+</script>
+</body>
+</html>
