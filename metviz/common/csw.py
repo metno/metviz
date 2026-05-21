@@ -361,6 +361,17 @@ def keep_with_wms(record: CswRecord) -> bool:
     return record.wms_url is not None
 
 
+def count_hits(csw, filter_list) -> int:
+    """Return how many records match *filter_list* — cheaply.
+
+    Uses ``resultType="hits"`` so the server returns only the count, not the
+    records. Call this before scanning to decide whether a query is too broad
+    (and to avoid an expensive OPeNDAP probe-scan over a huge result set).
+    """
+    csw.getrecords2(constraints=filter_list, resulttype="hits", maxrecords=0)
+    return int(csw.results.get("matches", 0) or 0)
+
+
 def collect_page(
     csw,
     filter_list,
