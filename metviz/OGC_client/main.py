@@ -89,7 +89,11 @@ ACCENT_BASE_COLOR = "#003366"
 # Dormant for now (the toggle is hidden); the layer CRS tracks the live map so
 # it works across projection switches.
 wms_toggle = pn.widgets.Toggle(name="Show WMS Loader", button_type="primary", value=False, visible=False)
-wms_loader = WmsLoader(get_map=lambda: lmap, get_crs=lambda: lmap.crs)
+wms_loader = WmsLoader(
+    get_map=lambda: lmap,
+    get_crs=lambda: lmap.crs,
+    on_layer_crs=lambda crs: _wms_choose_projection(crs),
+)
 # Shown in the detail card when the search source is WMS (swapped in by
 # _on_source_change), so it stays visible; not placed in any layout otherwise.
 wms_dialog = wms_loader.layout
@@ -1322,19 +1326,63 @@ def _rebuild_map(projection):
     _reapply_overlays()
 
 
-projection_select = pn.widgets.RadioButtonGroup(
-    name="Projection", options=[_MERCATOR, _POLAR, _WGS84], value=_MERCATOR
+# One tab per projection; the single map is shown in the active tab and rebuilt
+# in that projection when the tab changes.
+_PROJECTIONS = [_MERCATOR, _POLAR, _WGS84]
+# EPSG code each projection requests from a WMS. The polar tab's custom
+# EPSG:3996 is never advertised by WMS servers, so it has no entry and is never
+# auto-matched.
+_PROJECTION_EPSG = {_MERCATOR: "EPSG:3857", _WGS84: "EPSG:4326"}
+_proj_tab_holders = [pn.Column(sizing_mode="stretch_both") for _ in _PROJECTIONS]
+projection_tabs = pn.Tabs(
+    *zip(_PROJECTIONS, _proj_tab_holders, strict=True), sizing_mode="stretch_both"
 )
-projection_select.param.watch(lambda event: _rebuild_map(event.new), "value")
+
+
+def _apply_projection(index):
+    """Rebuild the map for tab *index* and show it in that tab."""
+    _rebuild_map(_PROJECTIONS[index])
+    for i, holder in enumerate(_proj_tab_holders):
+        holder[:] = [map_pane] if i == index else []
+
+
+projection_tabs.param.watch(lambda event: _apply_projection(event.new), "active")
+
+
+def _set_projection(projection):
+    """Switch to *projection*'s tab (rebuilding the map) if not already active."""
+    index = _PROJECTIONS.index(projection)
+    if projection_tabs.active != index:
+        projection_tabs.active = index  # fires the watcher -> _apply_projection
+
+
+def _wms_choose_projection(crs_codes):
+    """Pick the map projection for a WMS from its supported CRS list.
+
+    Keep the current tab if the WMS supports its CRS; otherwise prefer WGS84
+    (EPSG:4326), then Web Mercator (EPSG:3857). If none match, leave the map as
+    is — most polar services support EPSG:4326.
+    """
+    codes = {str(c).upper() for c in crs_codes}
+    current = _PROJECTIONS[projection_tabs.active]
+    current_epsg = _PROJECTION_EPSG.get(current)
+    if current_epsg and current_epsg in codes:
+        return
+    if "EPSG:4326" in codes:
+        _set_projection(_WGS84)
+    elif "EPSG:3857" in codes:
+        _set_projection(_MERCATOR)
 
 
 # --- Layout: React template (resizable, draggable grid) ----------------------
 # Sidebar: collapsible CSW search + the compact results table (same column).
 # Main area: map and plot side by side, each a draggable/resizable grid card.
 map_pane = pn.panel(lmap, sizing_mode="stretch_both", min_height=380)
+# Show the map in the initially-active projection tab.
+_proj_tab_holders[projection_tabs.active][:] = [map_pane]
 map_card = pn.Card(
-    pn.Row(projection_select, pn.Row(lon_label, lat_label)),
-    map_pane,
+    pn.Row(lon_label, lat_label),
+    projection_tabs,
     title="Map",
     collapsible=False,
     margin=0,

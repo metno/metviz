@@ -35,16 +35,20 @@ def wms_base_url(url: str) -> str:
 
 
 def list_layers(url: str):
-    """Fetch a WMS GetCapabilities and return ``(layers, version, title)``.
+    """Fetch a WMS GetCapabilities and return ``(layers, version, title, crs)``.
 
-    *layers* is a list of ``(name, title)`` tuples. Raises on network/parse
-    failure — the caller is expected to handle the exception.
+    *layers* is a list of ``(name, title)`` tuples; *crs* is the sorted set of
+    EPSG codes (e.g. ``"EPSG:4326"``) supported across all layers. Raises on
+    network/parse failure — the caller is expected to handle the exception.
     """
     wms = owslib.wms.WebMapService(url)
     layers = [(name, getattr(layer, "title", "") or "") for name, layer in wms.contents.items()]
+    crs = set()
+    for layer in wms.contents.values():
+        crs.update(getattr(layer, "crsOptions", None) or [])
     identification = getattr(wms, "identification", None)
     title = (getattr(identification, "title", "") if identification else "") or ""
-    return layers, wms.version, title
+    return layers, wms.version, title, sorted(crs)
 
 
 class WmsLoader:
@@ -58,11 +62,18 @@ class WmsLoader:
     get_crs : callable -> crs, optional
         Returns the CRS for added layers (default: the map's current ``crs``,
         else EPSG4326). The WMS server must actually support that CRS.
+    on_layer_crs : callable(list[str]) -> None, optional
+        Called just before layers are added, with the WMS's supported EPSG
+        codes. The app can use it to switch the map to a matching projection;
+        ``get_map``/``get_crs`` are read *after* it returns, so they reflect any
+        switch.
     """
 
-    def __init__(self, *, get_map, get_crs=None):
+    def __init__(self, *, get_map, get_crs=None, on_layer_crs=None):
         self._get_map = get_map
         self._get_crs = get_crs
+        self._on_layer_crs = on_layer_crs
+        self.crs_options: list[str] = []
         self.url_input = pn.widgets.TextInput(name="WMS GetCapabilities URL", placeholder="Enter WMS URL")
         self.load_button = pn.widgets.Button(name="Load capabilities", button_type="success")
         self.error = pn.pane.Alert("", alert_type="danger", visible=False)
@@ -95,10 +106,11 @@ class WmsLoader:
             self._show_error("Please enter a WMS GetCapabilities URL.")
             return
         try:
-            layers, version, title = list_layers(url)
+            layers, version, title, crs = list_layers(url)
         except Exception as exc:
             self._show_error(f"Error loading WMS: {exc}")
             return
+        self.crs_options = crs
         self.error.visible = False
         self.layers_md.object = (
             "### Available layers\n"
@@ -118,6 +130,8 @@ class WmsLoader:
         if not url or not names:
             return
         getmap_url = wms_base_url(url)
+        if self._on_layer_crs is not None:
+            self._on_layer_crs(self.crs_options)
         crs = self._get_crs() if self._get_crs is not None else projections.EPSG4326
         lmap = self._get_map()
         for name in names:
