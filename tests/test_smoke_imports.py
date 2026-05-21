@@ -26,6 +26,7 @@ LIBRARY_MODULES = [
     "common.plotting",
     "common.plot_panel",
     "common.trajectory",
+    "common.wms",
     "utility",  # ncapp feature-type models
 ]
 

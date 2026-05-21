@@ -52,6 +52,7 @@ from common.csw import CswRecord, build_filter, collect_page, connect, parse_bbo
 from common.data import load_data
 from common.plot_panel import DatasetPlotPanel
 from common.trajectory import nearest_index_for_time, track_bounds, track_points
+from common.wms import WmsLoader
 from ipyleaflet import CircleMarker, DrawControl, GeoJSON, LayersControl, Map, Marker, Polyline, WMSLayer
 from ipywidgets import HTML
 
@@ -65,98 +66,22 @@ plot_panel = DatasetPlotPanel()
 
 ACCENT_BASE_COLOR = "#003366"
 
-import owslib.wms
-
-# --- WMS GetCapabilities UI ---
-from ipyleaflet import projections
-
-# --- WMS GetCapabilities UI ---
-
+# --- WMS GetCapabilities loader (reusable component) -------------------------
+# Dormant for now (the toggle is hidden); the layer CRS tracks the live map so
+# it works across projection switches.
 wms_toggle = pn.widgets.Toggle(name="Show WMS Loader", button_type="primary", value=False, visible=False)
-
-wms_url_input = pn.widgets.TextInput(name="WMS GetCapabilities URL", placeholder="Enter WMS URL")
-wms_ok_button = pn.widgets.Button(name="Load WMS Capabilities", button_type="success")
-wms_layers_pane = pn.pane.Markdown("", height=100, sizing_mode="stretch_width")
-wms_error_pane = pn.pane.Alert("", alert_type="danger", visible=False)
-wms_layers_selector = pn.widgets.CheckBoxGroup(name="Available WMS Layers", options=[], visible=False)
-wms_add_button = pn.widgets.Button(name="Add Selected Layer(s) to Map", button_type="primary", visible=False)
-
-def load_wms_layers(event):
-    """Load WMS GetCapabilities from the URL in the widget.
-
-    This function reads the URL entered in `wms_url_input` and attempts to
-    parse the WMS GetCapabilities document using `owslib.wms.WebMapService`.
-
-    On success it populates `wms_layers_pane` with a markdown list of
-    available layers and fills `wms_layers_selector.options` with tuples
-    (label, layer_name) so the user can choose layers to add to the map.
-
-    On failure the function displays an error message in
-    `wms_error_pane` and hides the selector and add button.
-
-    Args:
-        event: Panel click event (ignored; present to wire up as a callback).
-    """
-    url = wms_url_input.value.strip()
-    if not url:
-        wms_error_pane.object = "Please enter a WMS GetCapabilities URL."
-        wms_error_pane.visible = True
-        wms_layers_pane.object = ""
-        wms_layers_selector.visible = False
-        wms_add_button.visible = False
-        return
-    try:
-        wms = owslib.wms.WebMapService(url)
-        layers_md = "### Available WMS Layers\n"
-        options = []
-        for layer_name, layer in wms.contents.items():
-            # Label for user, value for logic
-            label = f"{layer_name}: {layer.title or ''}"
-            options.append((label, layer_name))  # value is only layer_name
-            layers_md += f"- **{layer_name}**: {layer.title or ''}\n"
-        # Add other WMS options
-        layers_md += "\n**WMS Version:** " + wms.version
-        layers_md += "\n**Service Title:** " + (wms.identification.title or "")
-        wms_layers_pane.object = layers_md
-        wms_layers_selector.options = options
-        wms_layers_selector.visible = True
-        wms_add_button.visible = True
-        wms_error_pane.visible = False
-    except Exception as e:
-        wms_error_pane.object = f"Error loading WMS: {e}"
-        wms_error_pane.visible = True
-        wms_layers_pane.object = ""
-        wms_layers_selector.visible = False
-        wms_add_button.visible = False
-
-wms_ok_button.on_click(load_wms_layers)
-
-wms_dialog = pn.Column(
-    wms_url_input,
-    wms_ok_button,
-    wms_error_pane,
-    # wms_layers_pane,
-    wms_layers_selector,
-    wms_add_button,
-    visible=False,
-    margin=(10, 10),
-    sizing_mode="stretch_width",
-    styles=dict(background='WhiteSmoke'),
-)
+wms_loader = WmsLoader(get_map=lambda: lmap, get_crs=lambda: lmap.crs)
+wms_dialog = wms_loader.layout
+wms_dialog.visible = False
 
 
 def toggle_wms_dialog(event):
-    """Toggle visibility of the WMS configuration dialog.
-
-    Args:
-        event: Panel widget change event (ignored; used as a watcher callback).
-    """
+    """Toggle visibility of the WMS loader."""
     wms_dialog.visible = wms_toggle.value
 
-wms_toggle.param.watch(toggle_wms_dialog, 'value')
 
-
-# END WMS GetCapabilities UI ---
+wms_toggle.param.watch(toggle_wms_dialog, "value")
+# END WMS GetCapabilities loader ---
 
 # CSW Query and Draw Handling (from main.py)
 
@@ -1051,35 +976,6 @@ lmap.on_interaction(on_mouse_move)  # Only once!
 
 draw.on_draw(on_draw_handler)
 lmap.add_control(draw)
-
-def add_selected_wms_layers(event):
-    """(Re)defined helper to add selected WMS layers and refresh the manager.
-
-    Note: This module contains a second definition of `add_selected_wms_layers`
-    later in the file. This definition mirrors the earlier one but also
-    calls `update_layer_manager()` after adding layers so the UI reflects
-    the new entries.
-
-    Args:
-        event: Panel click event (ignored; present to wire up as a callback).
-    """
-    url = wms_url_input.value.strip()
-    selected_layers = wms_layers_selector.value
-    if not url or not selected_layers:
-        return
-    for layer_name in selected_layers:
-        wms_layer = WMSLayer(
-            url=url,
-            layers=layer_name,
-            crs=projections.EPSG4326,
-            name=layer_name,
-            transparent=True,
-            format="image/png"
-        )
-        lmap.add_layer(wms_layer)
-    update_layer_manager()  # <-- Only update when WMS layers are added
-
-wms_add_button.on_click(add_selected_wms_layers)
 
 # component = pn.Column(
 #     checkbox,
