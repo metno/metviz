@@ -60,19 +60,32 @@ def geodesic_length_km(points: list[list[float]]) -> float:
     return total_m / 1000.0
 
 
-def nearest_index_for_epoch_ms(times, epoch_ms) -> int | None:
-    """Return the index in *times* nearest to a Bokeh x value in epoch ms.
+def to_datetime64(x) -> np.datetime64 | None:
+    """Coerce a Bokeh tap/hover x into ``numpy.datetime64`` (ms), or ``None``.
 
-    Bokeh datetime axes report tapped/hovered positions as milliseconds since
-    the Unix epoch; map that back to the closest sample so the map marker can
-    follow the plot. Returns ``None`` if *epoch_ms* is ``None`` or *times* empty.
+    Depending on the axis/version, Bokeh hands back a ``datetime.datetime``,
+    a pandas ``Timestamp``, a ``datetime64``, or a numeric epoch in
+    milliseconds — accept all of them.
     """
-    if epoch_ms is None:
+    if x is None:
+        return None
+    if isinstance(x, (int, float, np.integer, np.floating)):
+        return np.datetime64(int(x), "ms")
+    return np.datetime64(x).astype("datetime64[ms]")
+
+
+def nearest_index_for_time(times, x) -> int | None:
+    """Return the index in *times* nearest to a tapped/hovered x.
+
+    *x* may be a datetime, Timestamp, datetime64, or numeric epoch ms (see
+    :func:`to_datetime64`). Returns ``None`` if *x* is ``None`` or *times* empty.
+    """
+    target = to_datetime64(x)
+    if target is None:
         return None
     times = np.asarray(times).astype("datetime64[ms]")
     if times.size == 0:
         return None
-    target = np.datetime64(int(epoch_ms), "ms")
     return int(np.abs(times - target).argmin())
 
 

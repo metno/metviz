@@ -51,7 +51,7 @@ from common.browser_storage import BrowserStorage
 from common.csw import CswRecord, build_filter, collect_page, connect, parse_bbox
 from common.data import load_data
 from common.plot_panel import DatasetPlotPanel
-from common.trajectory import nearest_index_for_epoch_ms, track_bounds, track_points
+from common.trajectory import nearest_index_for_time, track_bounds, track_points
 from ipyleaflet import CircleMarker, DrawControl, GeoJSON, LayersControl, Map, Marker, Polyline
 from ipywidgets import HTML
 
@@ -442,14 +442,14 @@ def _show_trajectory(ds):
         lmap.center = points[len(points) // 2]
 
 
-def _on_plot_time(epoch_ms):
+def _on_plot_time(x):
     """Move the trajectory marker to the track point nearest the tapped time."""
     times = _trajectory["times"]
     points = _trajectory["points"]
     marker = _trajectory["marker"]
     if times is None or points is None or marker is None:
         return
-    idx = nearest_index_for_epoch_ms(times, epoch_ms)
+    idx = nearest_index_for_time(times, x)
     if idx is None or not (0 <= idx < len(points)):
         return
     marker.location = points[idx]
