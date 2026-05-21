@@ -30,6 +30,7 @@ import panel as pn
 from common.data import load_data
 from common.logging_utils import create_logger
 from common.redirect import Redirector
+from common.routing import target_app_for
 
 pn.extension(sizing_mode="stretch_width")
 
@@ -46,19 +47,6 @@ EXAMPLE_RESOURCES = {
     "Trajectory 1": "https://thredds.met.no/thredds/dodsC/arcticdata/arctic-passion/UiT-drifters/AWS-ITO/aws_2022.nc",
     "Trajectory 2": "https://thredds.met.no/thredds/dodsC/arcticdata/arctic-passion/UiT-drifters/SIMBA/simba-510_air-temperature2022.nc",
 }
-
-# Which visualization app handles each detected featureType.
-FEATURE_TYPE_APP = {"timeseries": "TSP", "trajectory": "TRJ", "profile": "TSP"}
-
-
-def target_app(feature_type: str | None) -> str:
-    """Map a detected featureType to the visualization app that handles it.
-
-    Unknown / undetected types fall back to TSP, which covers the common
-    1-D feature types.
-    """
-    return FEATURE_TYPE_APP.get(feature_type, "TSP")
-
 
 redirector = Redirector()
 resources_df = pd.DataFrame.from_dict(EXAMPLE_RESOURCES, orient="index", columns=["URL"])
@@ -86,7 +74,7 @@ def load_data_button(clicks) -> None:
         return
     _, _, _, _, feature_type = load_data(url)
     logger.info(f"FeatureType detected: {feature_type}")
-    redirector.redirect(f"/{target_app(feature_type)}?url={url}")
+    redirector.redirect(f"/{target_app_for(feature_type)}?url={url}")
 
 
 pn.Column(

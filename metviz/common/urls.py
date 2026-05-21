@@ -58,3 +58,17 @@ def detect_feature_type(ds: xr.Dataset) -> str | None:
         if cdm:
             return str(cdm).lower()
     return None
+
+
+def feature_type_from_url(url: str) -> str | None:
+    """Open *url* and return its CF ``featureType``, or ``None`` if unavailable.
+
+    Times are not decoded (only attributes are needed). Returns ``None`` on any
+    open/read failure rather than raising, so it is safe to call while
+    filtering many candidate datasets.
+    """
+    try:
+        with xr.open_dataset(str(url), decode_times=False) as ds:
+            return detect_feature_type(ds)
+    except Exception:
+        return None

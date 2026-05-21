@@ -15,6 +15,8 @@ LIBRARY_MODULES = [
     "common.urls",
     "common.data",
     "common.variables",
+    "common.routing",
+    "common.csw",
     "common.html",
     "common.download",
     "common.widgets",
