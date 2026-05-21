@@ -31,6 +31,7 @@ services:
       # - ./metviz/tspt:/tspt
       - ./metviz/TSP:/TSP
       - ./metviz/catalog:/Catalog
+      - ./metviz/OGC_client:/OGC_client
       # Shared helpers imported by both Panel apps as `from common... import ...`
       - ./metviz/common:/opt/metviz/common
       - ./metviz/OGC_client:/OGC_client

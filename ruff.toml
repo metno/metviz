@@ -19,3 +19,5 @@ ignore = [
 "metviz/TSP/main.py" = ["E402"]
 "metviz/trj/main.py" = ["E402"]
 "metviz/catalog/main.py" = ["E402"]
+# Legacy imperative map/WMS/CSW app, pending refactor + merge with Catalog.
+"metviz/OGC_client/main.py" = ["E402"]
