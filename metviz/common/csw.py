@@ -13,6 +13,7 @@ from __future__ import annotations
 
 import ast
 import os
+from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass, field
 
 from owslib import fes
@@ -296,13 +297,31 @@ def build_filter(*, text=None, bbox=None, start=None, stop=None, crs: str = DEFA
     return constraints
 
 
-def connect(endpoint: str, timeout: int = 60) -> CatalogueServiceWeb:
-    """Open a CSW connection (fetches GetCapabilities once).
+# How many CSW connections to fetch chunks in parallel during a scan. The
+# server caps each request at ~10 records, so the dominant cost is round-trip
+# latency; fanning out across connections cuts a sparse scan several-fold.
+SCAN_WORKERS = 8
+
+
+def connect(endpoint: str, timeout: int = 60, skip_caps: bool = False) -> CatalogueServiceWeb:
+    """Open a CSW connection.
 
     Reuse the returned object across page requests so capabilities are not
-    re-fetched on every page turn.
+    re-fetched on every page turn. Pass ``skip_caps=True`` to skip the
+    GetCapabilities round-trip — useful for cheap, throwaway connections in a
+    parallel scan pool (``getrecords2`` does not need capabilities).
     """
-    return CatalogueServiceWeb(endpoint, timeout=timeout)
+    return CatalogueServiceWeb(endpoint, timeout=timeout, skip_caps=skip_caps)
+
+
+def connect_pool(endpoint: str, size: int = SCAN_WORKERS, timeout: int = 60) -> list:
+    """Return *size* lightweight (``skip_caps``) CSW connections for parallel scans.
+
+    owslib's ``CatalogueServiceWeb`` is not thread-safe (each call mutates the
+    instance), so a parallel scan needs one connection per worker thread.
+    ``skip_caps`` makes each connection essentially free to create.
+    """
+    return [connect(endpoint, timeout=timeout, skip_caps=True) for _ in range(size)]
 
 
 def get_page(
@@ -437,6 +456,75 @@ def collect_page(
                 # Stop scanning this page; the result set isn't exhausted, so the
                 # next page can continue from `cursor`.
                 break
+
+    return matched, cursor, end, matches
+
+
+def collect_page_parallel(
+    connections,
+    filter_list,
+    *,
+    start_cursor: int = 1,
+    page_size: int = 10,
+    fetch_size: int = 10,
+    keep=None,
+    max_scan: int = 500,
+):
+    """Parallel variant of :func:`collect_page` using a pool of *connections*.
+
+    Same contract and return value as :func:`collect_page`, but each scan
+    "wave" fetches ``len(connections)`` chunks concurrently (one per
+    connection) instead of one at a time. Chunks are processed in ascending
+    position order so the resume *cursor* stays exact: when a page fills
+    mid-chunk, scanning of later (already-fetched) chunks is discarded and the
+    next page re-fetches from the precise resume position.
+    """
+    if keep is None:
+        keep = keep_with_feature_type
+    workers = max(1, len(connections))
+    matched: list[CswRecord] = []
+    cursor = start_cursor
+    matches = 0
+    end = False
+    scanned = 0
+
+    def _fetch(conn_pos):
+        conn, pos = conn_pos
+        records, results = get_page(conn, filter_list, startposition=pos, pagesize=fetch_size)
+        return pos, records, results
+
+    while len(matched) < page_size and not end and scanned < max_scan:
+        positions = [cursor + i * fetch_size for i in range(workers)]
+        with ThreadPoolExecutor(max_workers=workers) as pool:
+            wave = sorted(pool.map(_fetch, zip(connections, positions, strict=False)), key=lambda t: t[0])
+
+        filled = False
+        capped = False
+        for pos, records, results in wave:
+            matches = int(results.get("matches", 0) or 0) or matches
+            returned = len(records)
+            if returned == 0:
+                end = True
+                break
+            scanned += returned
+            for offset_in_chunk, record in enumerate(records):
+                if keep(record):
+                    matched.append(record)
+                    if len(matched) >= page_size:
+                        cursor = pos + offset_in_chunk + 1
+                        filled = True
+                        break
+            if filled:
+                break
+            cursor = pos + returned
+            if returned < fetch_size or cursor > matches:
+                end = True
+                break
+            if scanned >= max_scan:
+                capped = True
+                break
+        if filled or end or capped:
+            break
 
     return matched, cursor, end, matches
 

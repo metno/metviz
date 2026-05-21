@@ -52,8 +52,9 @@ from common.browser_storage import BrowserStorage
 from common.csw import (
     CswRecord,
     build_filter,
-    collect_page,
+    collect_page_parallel,
     connect,
+    connect_pool,
     count_hits,
     keep_with_feature_type,
     keep_with_wms,
@@ -219,7 +220,7 @@ csw_page_label = pn.widgets.StaticText(value="", visible=False)
 # Per-session paging state. _csw_pages is a history of computed page dicts so
 # Prev is instant; _csw_index points at the page currently shown.
 _csw_records: list = []
-_csw_state = {"csw": None, "filter": None, "matches": 0}
+_csw_state = {"csw": None, "pool": None, "filter": None, "matches": 0}
 _csw_pages: list = []
 _csw_index = -1
 
@@ -626,8 +627,8 @@ def _compute_page(start_cursor, offset):
     # WMS: cheap metadata check, scan a bit further to fill a page; OPeNDAP:
     # each keep probes a dataset, so keep the scan tighter.
     keep, cap = (keep_with_wms, 1000) if _wms_mode() else (keep_with_feature_type, 500)
-    records, next_cursor, end, matches = collect_page(
-        _csw_state["csw"], _csw_state["filter"],
+    records, next_cursor, end, matches = collect_page_parallel(
+        _csw_state["pool"], _csw_state["filter"],
         start_cursor=start_cursor, page_size=CSW_PAGE_SIZE, fetch_size=CSW_PAGE_SIZE,
         keep=keep, max_scan=cap,
     )
@@ -716,6 +717,7 @@ def process_query(event):
         return
     try:
         _csw_state["csw"] = connect(endpoint)
+        _csw_state["pool"] = connect_pool(endpoint)
         _csw_state["filter"] = _build_current_filter()
         hits = count_hits(_csw_state["csw"], _csw_state["filter"])
         if hits > MAX_HITS:

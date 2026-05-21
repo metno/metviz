@@ -9,6 +9,7 @@ from common.csw import (
     _iso_references,
     build_filter,
     collect_page,
+    collect_page_parallel,
     count_hits,
     extract_opendap_url,
     extract_wms_url,
@@ -114,6 +115,62 @@ def test_count_hits_uses_hits_resulttype_and_returns_matches():
 def test_count_hits_missing_matches_is_zero():
     csw = _HitsCsw(matches=None)
     assert count_hits(csw, []) == 0
+
+
+class _PoolCsw:
+    """Fake CSW returning position-sequential records up to *total*."""
+
+    def __init__(self, total=100_000, per=10):
+        self.total = total
+        self.per = per
+        self.records = {}
+        self.results = {}
+
+    def getrecords2(self, *, startposition, maxrecords, **kwargs):
+        remaining = max(0, self.total - startposition + 1)
+        n = min(self.per, maxrecords, remaining)
+        self.records = {
+            f"r{startposition + i}": SimpleNamespace(
+                identifier=f"r{startposition + i}", title="t", references=[], subjects=[]
+            )
+            for i in range(n)
+        }
+        self.results = {"matches": self.total, "returned": n, "nextrecord": startposition + n}
+
+
+def _pool(n=8, **kw):
+    return [_PoolCsw(**kw) for _ in range(n)]
+
+
+def test_collect_page_parallel_keeps_matches_in_order_and_exhausts():
+    records, next_cursor, end, matches = collect_page_parallel(
+        _pool(total=30), [], start_cursor=1, page_size=10, fetch_size=10,
+        keep=lambda r: r.identifier in {"r5", "r17"}, max_scan=100,
+    )
+    assert [r.identifier for r in records] == ["r5", "r17"]  # ascending position order
+    assert end is True            # result set exhausted at 30
+    assert matches == 30
+
+
+def test_collect_page_parallel_fills_page_with_exact_resume_cursor():
+    records, next_cursor, end, matches = collect_page_parallel(
+        _pool(total=1000), [], start_cursor=1, page_size=10, fetch_size=10,
+        keep=lambda r: True, max_scan=1000,
+    )
+    assert [r.identifier for r in records] == [f"r{i}" for i in range(1, 11)]
+    assert next_cursor == 11       # resume right after the 10th kept record
+    assert end is False
+
+
+def test_collect_page_parallel_scan_cap_terminates_without_exhausting():
+    records, next_cursor, end, matches = collect_page_parallel(
+        _pool(total=100_000), [], start_cursor=1, page_size=10, fetch_size=10,
+        keep=lambda r: False, max_scan=30,
+    )
+    assert records == []
+    assert next_cursor == 31       # scanned 3 chunks of 10 then stopped
+    assert end is False
+    assert matches == 100_000
 
 
 def test_extract_wms_url_by_protocol_and_url():
