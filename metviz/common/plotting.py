@@ -153,15 +153,18 @@ def _apply_orientation(plot_widget, *, invert_yaxis: bool = False, swap_axes: bo
     if swap_axes:
         opts["invert_axes"] = True
 
-    # Panel layouts expose `.objects`; the plot is the pane carrying `.object`.
-    pane = None
-    if hasattr(plot_widget, "objects"):
-        for obj in reversed(list(plot_widget)):
+    # hvplot may return: a bare HoloViews element; a Panel pane wrapping one
+    # (.object holds the element, no .opts of its own); or a Panel layout
+    # containing such a pane (when extra dims add slider widgets).
+    target = plot_widget
+    if hasattr(target, "objects"):
+        for obj in reversed(list(target)):
             if getattr(obj, "object", None) is not None:
-                pane = obj
+                target = obj
                 break
+    if getattr(target, "object", None) is not None:
+        target = target.object
     try:
-        target = pane.object if pane is not None else plot_widget
         target.opts(**opts)
     except Exception as exc:
         print(f"could not apply axis orientation: {exc}")

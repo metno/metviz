@@ -5,34 +5,32 @@ NetCDF layouts.
 
 from __future__ import annotations
 
+import re
+
 import numpy as np
 import xarray as xr
 
-# Names that identify coordinate / axis variables — not useful as plotted data.
-# Used by :func:`is_plottable` to exclude these from the *variable* selector.
-# Checked against the lower-cased variable name.
+# Legacy coordinate-like names. Applied *only* as a fallback when a variable
+# lacks CF metadata (no standard_name) — modern files are routed through
+# `axis` / `cf_role` / cross-reference checks first. Lower-cased.
+#
+# `pressure` is intentionally absent: it is a vertical coord in profile files
+# but an atmospheric observation in trajectory/timeseries files. CF `axis: Z`
+# or being listed in another variable's `coordinates` is the correct signal.
 _COORD_LIKE_NAMES: frozenset[str] = frozenset({
-    # Spatial coordinates
     "latitude", "longitude", "lat", "lon",
     "depth", "z", "altitude", "alt", "height",
-    "pressure", "pres", "lev", "level",
-    # Temporal
+    "pres", "lev", "level",
     "time",
-    # DSG structural dimensions
     "station", "profile", "trajectory", "obs",
     "row_size", "rowsize",
-    # Per-station / per-profile metadata scalars (not per-observation values)
     "bottomdepth", "bottom_depth",
 })
 
-# Variable-name suffixes that indicate identifiers, metadata, or QC variables —
-# excluded from the *variable* selector. Extend this tuple as needed.
-_EXCLUDE_SUFFIXES: tuple[str, ...] = (
-    # QC / flags
-    "_qc", "_flag", "flag", "qc", "woce", "_err", "_error", "_status",
-    # Identifier / index columns
-    "idall", "_id", "id",
-)
+# Underscore-anchored QC / error / flag suffix matcher. Anchoring on `_` keeps
+# `humidity` (ends in 'id'), `gradient_grid`, etc. from being wrongly dropped
+# by accidental substring matches.
+_QC_SUFFIX_RE = re.compile(r"(_qc|_flag|_status|_err(?:or)?|_woce|woceflag)$")
 
 # Names to exclude from the *dimension* selector even when they are legitimate
 # coordinate variables. Rationale: latitude/longitude are spatial coordinates,
@@ -63,46 +61,99 @@ def is_time_like(ds: xr.Dataset, name: str) -> bool:
 def is_plottable(name: str, var: xr.DataArray) -> bool:
     """Return ``True`` if *var* looks like a numeric data variable worth plotting.
 
+    CF-first: the file's own metadata is the primary signal; the legacy
+    coord-name list is only consulted when no ``standard_name`` is set.
+
     Rules:
-    - Must have at least one dimension.
-    - Must be a numeric dtype (float / integer — not string / object / bool).
-    - Name must not be a well-known coordinate / axis identifier.
-    - Name must not end with a recognised QC / flag suffix.
+    - 1-D-or-more, numeric (float / int / unsigned).
+    - Not a coord axis (``axis`` attr) or DSG identifier (``cf_role`` attr).
+    - Not a QC variable (``standard_name`` ending in ``status_flag`` /
+      ``quality_flag``, or a name ending in a recognised QC suffix).
+    - When the variable lacks a ``standard_name``, fall back to the legacy
+      coord-like-name set — files without CF annotation need the safety net.
     """
     if var.ndim < 1:
         return False
     if var.dtype.kind not in _NUMERIC_KINDS:
         return False
-    name_l = name.lower()
-    if name_l in _COORD_LIKE_NAMES:
+    if var.attrs.get("axis"):
         return False
-    return not any(name_l.endswith(s) for s in _EXCLUDE_SUFFIXES)
+    if var.attrs.get("cf_role"):
+        return False
+    standard_name = var.attrs.get("standard_name", "")
+    if standard_name.endswith(("status_flag", "quality_flag")):
+        return False
+    if _QC_SUFFIX_RE.search(name.lower()):
+        return False
+    if not standard_name and name.lower() in _COORD_LIKE_NAMES:
+        return False
+    return True
 
 
 def safe_check_var(ds: xr.Dataset, var: str) -> bool:
-    """Return ``True`` if *var* can be materialised from *ds* without error.
+    """Return ``True`` if *var* is structurally readable from *ds*.
 
-    Guards against remote/lazy variables that raise on access (e.g. broken
-    OPeNDAP slices) so they never reach the plotting code.
+    Peeks at shape and dtype — cheap metadata reads — rather than materialising
+    the array, which would pull the entire variable over OPeNDAP just to
+    confirm it loads.
     """
     try:
-        _ = ds[var].values  # force materialisation to surface lazy/remote errors
+        _ = ds[var].shape
+        _ = ds[var].dtype
         return True
     except Exception as exc:
-        print(f"safe_check: cannot load {var!r}: {exc}")
+        print(f"safe_check: cannot describe {var!r}: {exc}")
         return False
+
+
+# CF/NetCDF "no data" fill value used by many of the OPeNDAP datasets we serve.
+# Matches the constant in :mod:`common.plotting`.
+_FILL_VALUE = 9.96921e36
+
+
+def is_empty(ds: xr.Dataset, name: str, *, fill_value: float = _FILL_VALUE) -> bool:
+    """Return ``True`` if *name* contains no finite, non-fill values.
+
+    Fetches the variable's data — caller is responsible for running this off
+    the request thread when the dataset is remote.
+    """
+    try:
+        da = ds[name]
+        return int(da.where(da != fill_value).count()) == 0
+    except Exception as exc:
+        print(f"is_empty: cannot inspect {name!r}: {exc}")
+        return False
+
+
+def _referenced_coords(ds: xr.Dataset) -> set[str]:
+    """Names another data variable points to via CF coordinate references.
+
+    A variable that appears in any other variable's ``coordinates``,
+    ``bounds``, ``ancillary_variables`` or ``cell_measures`` attribute is
+    structural to that variable — not itself a plotting target.
+    """
+    refs: set[str] = set()
+    for v in ds.data_vars.values():
+        for key in ("coordinates", "bounds", "ancillary_variables", "cell_measures"):
+            val = v.attrs.get(key, "")
+            if val:
+                refs.update(val.split())
+    return refs
 
 
 def get_plottable_vars(ds: xr.Dataset) -> list[str]:
     """Return data-variable names in *ds* suitable for x-y plotting.
 
-    Uses ``ds.data_vars`` (excluding proper coordinate variables), then applies
-    :func:`is_plottable` and a live-access check. This works for DSG datasets
-    where the observation dimension is not registered as a named coordinate.
+    Combines :func:`is_plottable` (per-variable CF checks) with a dataset-wide
+    cross-reference sweep that drops anything another variable already
+    declares as one of its coordinates / bounds / ancillary fields.
     """
+    referenced = _referenced_coords(ds)
     return [
         name for name in ds.data_vars
-        if is_plottable(name, ds[name]) and safe_check_var(ds, name)
+        if name not in referenced
+        and is_plottable(name, ds[name])
+        and safe_check_var(ds, name)
     ]
 
 

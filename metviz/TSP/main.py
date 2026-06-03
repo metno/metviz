@@ -30,6 +30,7 @@ if _COMMON_ROOT not in sys.path:
 
 import functools
 import json
+import threading
 import time
 
 import holoviews as hv
@@ -41,7 +42,12 @@ from common.download import get_download_link
 from common.logging_utils import create_logger
 from common.plotting import plot, plot_quadmesh
 from common.urls import validate_opendap, validate_url
-from common.variables import get_axis_candidates, get_plottable_vars, sort_axis_candidates
+from common.variables import (
+    get_axis_candidates,
+    get_plottable_vars,
+    is_empty,
+    sort_axis_candidates,
+)
 from common.widgets import build_download_widget, build_metadata_widget, show_hide_widget
 from starlette.templating import Jinja2Templates
 
@@ -244,6 +250,69 @@ else:
         invert_yaxis_checkbox = pn.widgets.Checkbox(name="Invert Y-axis", value=False)
         swap_axes_checkbox = pn.widgets.Checkbox(name="Swap axes", value=False)
 
+        # `empty_status[name]`: True = confirmed empty, False = has data,
+        # None = scan not yet finished. Populated by a background thread.
+        empty_status: dict[str, bool | None] = {name: None for name in plottable_vars}
+        hide_empty_checkbox = pn.widgets.Checkbox(
+            name=f"Hide empty (0/{len(plottable_vars)})", value=False
+        )
+
+        def _refresh_var_options() -> None:
+            """Recompute the selector's options from `hide_empty_checkbox` + `empty_status`."""
+            if hide_empty_checkbox.value:
+                visible = [n for n in plottable_vars if empty_status.get(n) is not True]
+            else:
+                visible = list(plottable_vars)
+            new_options = [mapping_var_names[n] for n in visible]
+            if list(variables_selector.options) == new_options:
+                return
+            current = variables_selector.value
+            variables_selector.options = new_options
+            if current not in new_options and new_options:
+                variables_selector.value = new_options[0]
+
+        def _record_empty(name: str, verdict: bool) -> None:
+            """Doc-thread callback: record one scan result and refresh the UI."""
+            empty_status[name] = verdict
+            done = sum(1 for v in empty_status.values() if v is not None)
+            total = len(plottable_vars)
+            hide_empty_checkbox.name = (
+                f"Hide empty ({done}/{total})" if done < total else f"Hide empty ({total}/{total})"
+            )
+            _refresh_var_options()
+
+        def _on_hide_empty_toggle(event) -> None:
+            _refresh_var_options()
+
+        hide_empty_checkbox.param.watch(_on_hide_empty_toggle, parameter_names=["value"])
+
+        # Background scan: read each variable off the request thread and stream
+        # results back via `doc.add_next_tick_callback`, which is the only safe
+        # way to mutate widget state from a thread on Bokeh's IOLoop.
+        _doc = pn.state.curdoc
+
+        def _scan_worker(doc=_doc) -> None:
+            t0 = time.time()
+            logger.info(f"empty-scan: starting on {len(plottable_vars)} variables")
+            empties: list[str] = []
+            for name in plottable_vars:
+                try:
+                    verdict = is_empty(ds, name)
+                except Exception as exc:
+                    logger.warning(f"is_empty({name!r}) failed: {exc}")
+                    verdict = False
+                if verdict:
+                    empties.append(name)
+                if doc is not None:
+                    doc.add_next_tick_callback(functools.partial(_record_empty, name, verdict))
+            logger.info(
+                f"empty-scan: done in {time.time() - t0:.2f}s — "
+                f"{len(empties)}/{len(plottable_vars)} empty: {empties}"
+            )
+
+        if plottable_vars:
+            threading.Thread(target=_scan_worker, daemon=True).start()
+
         # Resampling only applies to monotonic time series.
         frequency_selector.visible = featureType == "timeseries" and bool(monotonic)
 
@@ -284,7 +353,7 @@ else:
                 variables_selector,
                 pn.Row(Div(text='<font size="2" color="darkslategray">Dimension</font>'), dimension_group),
                 frequency_selector,
-                pn.Column(invert_yaxis_checkbox, swap_axes_checkbox),
+                pn.Column(invert_yaxis_checkbox, swap_axes_checkbox, hide_empty_checkbox),
                 pn.Column(export_button, metadata_button),
             ),
             quadmesh_checkbox,
