@@ -1,0 +1,14 @@
+fastapi
+uvicorn
+# Async export pipeline + timestamped downloads
+celery
+redis
+itsdangerous
+jinja2
+python-multipart
+# NetCDF/xarray export task
+xarray
+pandas
+numpy
+netcdf4
+pyarrow

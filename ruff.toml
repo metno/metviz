@@ -1,0 +1,23 @@
+# Ruff configuration for the metviz Python sources.
+# Run from the repo root:  ruff check .
+target-version = "py312"
+line-length = 120
+
+[lint]
+select = ["E", "F", "W", "I", "UP", "B"]
+ignore = [
+    # Long OPeNDAP URLs and inline HTML snippets are clearer left unwrapped.
+    "E501",
+    # FastAPI uses `Query(...)` / `Depends(...)` as argument defaults by design.
+    "B008",
+]
+
+[lint.per-file-ignores]
+# Directory-served apps run setup at import time and legitimately bootstrap
+# sys.path before importing app-local / shared modules.
+"ncapp/app/main.py" = ["E402"]
+"metviz/TSP/main.py" = ["E402"]
+"metviz/trj/main.py" = ["E402"]
+"metviz/catalog/main.py" = ["E402"]
+# Legacy imperative map/WMS/CSW app, pending refactor + merge with Catalog.
+"metviz/OGC_client/main.py" = ["E402"]
