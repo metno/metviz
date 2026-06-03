@@ -15,22 +15,35 @@ import sys
 
 sys.path.append("/app")
 
+from contextlib import asynccontextmanager
+
+import download_api
 import uvicorn
 from bokeh.embed import server_document
 from fastapi import FastAPI, HTTPException, Query, Request
 from fastapi.responses import HTMLResponse
 from fastapi.templating import Jinja2Templates
 from pydantic import AnyHttpUrl
+from signing import download_dir
 from starlette.middleware.cors import CORSMiddleware
 from utility import FeatureType, FeatureTypeEnum, guess_feature_type_from_data
 
 PANEL_TSP_URL: str = os.environ.get("PANEL_TSP_URL", "")
 PANEL_TRJ_URL: str = os.environ.get("PANEL_TRJ_URL", "")
 
+
+@asynccontextmanager
+async def lifespan(_app: FastAPI):
+    """Ensure the (shared) download directory exists before serving."""
+    download_dir()
+    yield
+
+
 app = FastAPI(
     title="METAPI",
     description="Prototype API to render NetCDF Data [TS, TSP, TRJ] using Panel and Bokeh",
     version="0.0.1",
+    lifespan=lifespan,
 )
 templates = Jinja2Templates(directory="templates")
 
@@ -44,6 +57,10 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+# Async download/export pipeline: POST /process_data, GET /results/{token},
+# GET /file_results/{token}. See download_api.py.
+app.include_router(download_api.router)
 
 
 def _embed_response(panel_url: str, url: str, render: bool, request: Request):

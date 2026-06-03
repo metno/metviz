@@ -17,3 +17,9 @@ panel
 hvplot
 holoviews
 bokeh
+# ncapp download/export pipeline (signing, worker, FastAPI endpoints under test).
+fastapi
+uvicorn
+celery
+redis
+httpx
