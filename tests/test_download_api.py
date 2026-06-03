@@ -35,6 +35,20 @@ def test_token_roundtrip(signing):
     assert recovered == filename
 
 
+def test_unsign_returns_future_expiry(signing):
+    """unsign_token returns the expiry (signed time + TTL), not the signed time.
+
+    The landing-page countdown ticks down to this instant; if it returned the
+    signed time the timer would be already-negative and never render.
+    """
+    import datetime as dt
+
+    token = signing.sign_filename("data.csv")
+    _name, expiry = signing.unsign_token(token)
+    seconds_left = (expiry - dt.datetime.now(dt.timezone.utc)).total_seconds()
+    assert signing.DOWNLOAD_TTL_SECONDS - 5 < seconds_left <= signing.DOWNLOAD_TTL_SECONDS
+
+
 def test_token_expires(signing, monkeypatch):
     token = signing.sign_filename("data.csv")
     # Force a negative TTL so an immediately-issued token is already expired.

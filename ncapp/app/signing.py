@@ -18,6 +18,7 @@ import base64
 import os
 import re
 import uuid
+from datetime import timedelta
 from pathlib import Path
 
 from itsdangerous import TimestampSigner
@@ -57,14 +58,19 @@ def sign_filename(filename: str) -> str:
 def unsign_token(token: str):
     """Verify a download token against the TTL.
 
-    Returns ``(filename, expiry_datetime)``. Raises ``itsdangerous`` errors
-    (``SignatureExpired`` / ``BadSignature``) on failure; ``SignatureExpired``
-    carries ``date_signed`` so callers can compute the (already-past) expiry.
+    Returns ``(filename, expiry_datetime)``. ``itsdangerous`` hands back the
+    instant the token was *signed*; the link expires ``DOWNLOAD_TTL_SECONDS``
+    later, so we add the TTL to get the actual (UTC, tz-aware) expiry that the
+    landing-page countdown ticks down to.
+
+    Raises ``itsdangerous`` errors (``SignatureExpired`` / ``BadSignature``) on
+    failure.
     """
-    filename_bytes, timestamp = get_signer().unsign(
+    filename_bytes, signed_at = get_signer().unsign(
         token, max_age=DOWNLOAD_TTL_SECONDS, return_timestamp=True
     )
-    return filename_bytes.decode(), timestamp
+    expiry = signed_at + timedelta(seconds=DOWNLOAD_TTL_SECONDS)
+    return filename_bytes.decode(), expiry
 
 
 def file_for_token(token: str) -> Path:
