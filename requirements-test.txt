@@ -1,0 +1,25 @@
+# Test/dev dependencies for running the smoke + unit tests in a local venv.
+# Install into a gitignored venv:  python3 -m venv .venv && .venv/bin/pip install -r requirements-test.txt
+pytest
+numpy
+pandas
+xarray
+pydantic
+requests
+itsdangerous
+# CSW catalogue search (common.csw)
+owslib
+geolinks
+# Trajectory geodesic length (common.trajectory)
+geographiclib
+# Viz stack — needed to import the panel/holoviews-dependent modules under test.
+panel
+hvplot
+holoviews
+bokeh
+# ncapp download/export pipeline (signing, worker, FastAPI endpoints under test).
+fastapi
+uvicorn
+celery
+redis
+httpx

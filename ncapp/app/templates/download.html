@@ -1,0 +1,40 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Download ready</title>
+    <style>
+        body { margin: 40px; font-family: sans-serif; color: #222; }
+        a.download { font-size: 1.4em; font-weight: bold; }
+        #time_left { font-family: monospace; font-size: 1.2em; }
+    </style>
+</head>
+<body>
+    <h1>Your download is ready</h1>
+    <p>
+        <!-- Served through the signed endpoint so expiry is enforced (no static mount). -->
+        <a class="download" href="/file_results/{{ token }}" download>Download {{ filename }}</a>
+    </p>
+    <p>This link will expire in: <span id="time_left"></span></p>
+
+    <script>
+        // Expiry instant reconstructed from the signed token's expiry (UTC).
+        var expireAt = Date.UTC({{ year }}, {{ month }}, {{ day }}, {{ hour }}, {{ minute }}, {{ second }});
+        function tick() {
+            var distance = expireAt - new Date().getTime();
+            if (distance < 0) {
+                clearInterval(timer);
+                window.location.reload(true);
+                return;
+            }
+            var hours = Math.floor((distance % (1000 * 60 * 60 * 24)) / (1000 * 60 * 60));
+            var minutes = Math.floor((distance % (1000 * 60 * 60)) / (1000 * 60));
+            var seconds = Math.floor((distance % (1000 * 60)) / 1000);
+            document.getElementById("time_left").innerHTML = hours + "h " + minutes + "m " + seconds + "s";
+        }
+        tick();  // render immediately, then update every second
+        var timer = setInterval(tick, 1000);
+    </script>
+</body>
+</html>

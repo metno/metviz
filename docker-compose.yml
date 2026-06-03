@@ -11,10 +11,18 @@ services:
       LOG_LEVEL: 'debug'
       BOKEH_LOG_LEVEL: 'debug'
       TSPLOT_DOWNLOAD: '/tspt/Download'
-      PROCESSING_ENDPOINT: 'https://met.no'
-      DOWNLOAD_ENDPOINT: 'https://met.no'
+      # PROCESSING_ENDPOINT is called server-side by the Panel app, so it can be
+      # the internal service address. DOWNLOAD_ENDPOINT is put into a link shown
+      # in the user's browser, so it must be reachable from the browser (set to
+      # the public host in production).
+      PROCESSING_ENDPOINT: 'http://ncapp:8000'
+      DOWNLOAD_ENDPOINT: 'http://localhost:8000'
+      # Must match the ncapp/worker key so tokens verify across services.
+      DOWNLOAD_SIGNING_KEY: 'change-me-in-production'
       PYTHONUNBUFFERED: 1
-      PYTHONPATH: '$${PYTHONPATH}:/app:/seaice:/seaicemod'
+      # /opt/metviz is the import root for the shared `common` package
+      # (mounted below at /opt/metviz/common).
+      PYTHONPATH: '$${PYTHONPATH}:/app:/seaice:/seaicemod:/opt/metviz'
       SEAICE_APP_ROOT: '/seaice'
       SEAICEMOD_APP_ROOT: '/seaicemod'
     # hostname: ncmet
@@ -28,11 +36,78 @@ services:
       # - ./metviz/mapdap:/mapdap
       # - ./metviz/tspt:/tspt
       - ./metviz/TSP:/TSP
+      - ./metviz/catalog:/Catalog
+      - ./metviz/OGC_client:/OGC_client
+      # Shared helpers imported by both Panel apps as `from common... import ...`
+      - ./metviz/common:/opt/metviz/common
       - ./metviz/OGC_client:/OGC_client
       - ./metviz/assets:/assets
       - ./docker/entrypoint.sh:/entrypoint.sh
       # - ./credentials.json:/credentials.json:ro
     entrypoint: ["/entrypoint.sh"]
+
+  # FastAPI service (METAPI): Panel embedding + the async download/export API
+  # (POST /process_data, GET /results/{token}, GET /file_results/{token}).
+  ncapp:
+    build:
+      context: ./ncapp
+    ports:
+      - "8000:8000"
+    environment:
+      TSPLOT_DOWNLOAD: '/data/Download'
+      DOWNLOAD_SIGNING_KEY: 'change-me-in-production'
+      DOWNLOAD_TTL_SECONDS: '600'
+      CELERY_BROKER_URL: 'redis://redis:6379/0'
+      CELERY_RESULT_BACKEND: 'redis://redis:6379/0'
+      PANEL_TSP_URL: 'http://ncview:7000/TSP'
+      PANEL_TRJ_URL: 'http://ncview:7000/trj'
+      PYTHONUNBUFFERED: 1
+      # /opt/metviz is the import root for the shared `common` package, reused by
+      # the export worker so downloads match the TSP plots (see worker.py).
+      PYTHONPATH: '/app:/opt/metviz'
+    volumes:
+      - ./ncapp/app:/app
+      - ./metviz/common:/opt/metviz/common
+      - download-data:/data/Download
+    command: uvicorn main:app --host 0.0.0.0 --port 8000 --reload
+    depends_on:
+      - redis
+
+  # Celery worker (+ embedded beat) running the export task and the periodic
+  # sweeper that deletes expired download files.
+  worker:
+    build:
+      context: ./ncapp
+    working_dir: /app
+    environment:
+      TSPLOT_DOWNLOAD: '/data/Download'
+      DOWNLOAD_SIGNING_KEY: 'change-me-in-production'
+      DOWNLOAD_TTL_SECONDS: '600'
+      CELERY_BROKER_URL: 'redis://redis:6379/0'
+      CELERY_RESULT_BACKEND: 'redis://redis:6379/0'
+      PYTHONUNBUFFERED: 1
+      # Shared `common` package import root: the export task reuses the TSP
+      # data-prep so downloads match the plots (see worker.py / common/dataprep.py).
+      PYTHONPATH: '/app:/opt/metviz'
+    volumes:
+      - ./ncapp/app:/app
+      - ./metviz/common:/opt/metviz/common
+      - download-data:/data/Download
+    command: celery -A worker.celery worker --beat --loglevel=info
+    depends_on:
+      - redis
+
+  redis:
+    image: redis:7
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis-data:/data
+
+
+volumes:
+  download-data:
+  redis-data:
 
 
 # networks:

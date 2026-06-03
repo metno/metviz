@@ -1,0 +1,18 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>FastAPI + Panel Integration</title>
+</head>
+<body style="margin: 20px; font-family: sans-serif;">
+    <h1>External FastAPI Header</h1>
+    <p>The content below is served live from the Panel container:</p>
+    
+    <div id="panel-app" style="width:100%; height:100%;">
+        {{ script|safe }}
+    </div>
+    <div id="text" >
+        some-text
+    </div>
+</body>
+</html>

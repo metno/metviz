@@ -6,9 +6,11 @@ WORKDIR /app
 COPY requirements.txt requirements.txt
 RUN pip install -r requirements.txt
 
-EXPOSE 7000
+RUN pip install -U git+https://github.com/opengeos/anymap
+RUN pip install -U gdown
+RUN pip install -U localtileserver
 
-COPY app /app
+EXPOSE 7000
 
 COPY entrypoint.sh entrypoint.sh
 RUN chmod +x entrypoint.sh
