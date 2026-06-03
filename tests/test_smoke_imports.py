@@ -20,6 +20,7 @@ LIBRARY_MODULES = [
     "common.csw",
     "common.html",
     "common.download",
+    "common.data_access",
     "common.widgets",
     "common.redirect",
     "common.browser_storage",

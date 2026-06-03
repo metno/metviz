@@ -21,7 +21,7 @@ import numpy as np
 import panel as pn
 import xarray as xr
 from bokeh.models import HoverTool
-from common.widgets import build_metadata_widget
+from common.data_access import build_data_access
 from geographiclib.geodesic import Geodesic
 from ipyleaflet import Map, Marker, Polyline, WMSLayer
 from ipywidgets import HTML
@@ -142,9 +142,15 @@ throttle_checkbox = pn.widgets.Checkbox(
     name="on-release", value=False, width=100
 )
 
-# Create the metadata HTML element together with the button used to show/hide it.
-metadata_layout, metadata_button = build_metadata_widget(ds.attrs)
-metadata_layout.visible = False
+# Shared Download + Metadata feature: the two header buttons plus the panels
+# they reveal (export wired internally). Both panels start hidden.
+data_access = build_data_access(
+    ds,
+    url=url,
+    variables=plottable_vars,
+    decoded_time=True,
+    loading_target=lambda: layout,
+)
 
 # Custom CRS for the northern polar stereographic projection used by the WMS.
 gebco_polar_stereo_north_crs = {
@@ -341,34 +347,19 @@ get_idx = pn.bind(
 )
 
 
-def metadata_handler(new):
-    if metadata_layout.visible:
-        metadata_layout.visible = False
-    else:
-        metadata_layout.visible = True
-
-
-# Is called when the page has finished loading to hide the metadata (used as a workaround to get a proper layout).
-def on_load():
-    metadata_layout.visible = False
-
-
 # Now bind `makeplot` to the variable selector and the resolved index value.
 bound_function = pn.bind(makeplot, variable=var_select, idx=get_idx)
 dmap = hv.DynamicMap(bound_function)
 
-# Handle metadata callbacks (both the button that shows/hides the metadata, and the panel callback that hides the
-# metadata once the page has loaded. The latter is a workaround to get a proper layout where the metadata only takes
-# up the set amount of width it is supposed to take up.
-metadata_button.on_event("button_click", metadata_handler)
-pn.state.onload(on_load)
-
 
 layout = pn.Row(pn.GridBox(
-   pn.Row(var_select, datetime_slider, throttle_checkbox, index_value, metadata_button),
+   pn.Row(
+       var_select, datetime_slider, throttle_checkbox, index_value,
+       data_access.download_button, data_access.metadata_button,
+   ),
    pn.Row(dmap, m),
    ncols=1, nrows=2
-), metadata_layout)
+), data_access.download_panel, data_access.metadata_panel)
 
 m.layout.width = '100%'
 m.layout.overflow = 'hidden'
