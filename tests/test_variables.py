@@ -1,6 +1,10 @@
+import numpy as np
+import xarray as xr
+
 from common.variables import (
     get_axis_candidates,
     get_plottable_vars,
+    is_empty,
     is_plottable,
     is_time_like,
     sort_axis_candidates,
@@ -47,3 +51,29 @@ def test_is_time_like(timeseries_ds):
 
 def test_sort_axis_candidates_time_first(timeseries_ds):
     assert sort_axis_candidates(timeseries_ds, ["latitude", "time"])[0] == "time"
+
+
+def test_is_empty_all_nan():
+    ds = xr.Dataset({"x": ("t", [np.nan] * 5)})
+    assert is_empty(ds, "x")
+
+
+def test_is_empty_all_fill_value():
+    ds = xr.Dataset({"x": ("t", [9.96921e36] * 5)})
+    assert is_empty(ds, "x")
+
+
+def test_is_empty_mixed_real_and_missing():
+    ds = xr.Dataset({"x": ("t", [1.0, np.nan, 9.96921e36, 2.0])})
+    assert not is_empty(ds, "x")
+
+
+def test_is_empty_normal_values():
+    ds = xr.Dataset({"x": ("t", np.arange(5.0))})
+    assert not is_empty(ds, "x")
+
+
+def test_is_empty_missing_variable_returns_false():
+    """Conservative fallback: if we can't inspect, treat as non-empty."""
+    ds = xr.Dataset({"x": ("t", np.arange(3.0))})
+    assert not is_empty(ds, "does_not_exist")
