@@ -13,6 +13,7 @@ import pytest
 LIBRARY_MODULES = [
     "common",
     "common.urls",
+    "common.dataprep",
     "common.data",
     "common.variables",
     "common.routing",

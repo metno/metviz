@@ -10,6 +10,9 @@ import re
 import numpy as np
 import xarray as xr
 
+# CF/NetCDF "no data" fill value; single source of truth in `common.dataprep`.
+from .dataprep import FILL_VALUE as _FILL_VALUE
+
 # Legacy coordinate-like names. Applied *only* as a fallback when a variable
 # lacks CF metadata (no standard_name) — modern files are routed through
 # `axis` / `cf_role` / cross-reference checks first. Lower-cased.
@@ -104,11 +107,6 @@ def safe_check_var(ds: xr.Dataset, var: str) -> bool:
     except Exception as exc:
         print(f"safe_check: cannot describe {var!r}: {exc}")
         return False
-
-
-# CF/NetCDF "no data" fill value used by many of the OPeNDAP datasets we serve.
-# Matches the constant in :mod:`common.plotting`.
-_FILL_VALUE = 9.96921e36
 
 
 def is_empty(ds: xr.Dataset, name: str, *, fill_value: float = _FILL_VALUE) -> bool:

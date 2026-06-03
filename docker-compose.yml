@@ -62,8 +62,12 @@ services:
       PANEL_TSP_URL: 'http://ncview:7000/TSP'
       PANEL_TRJ_URL: 'http://ncview:7000/trj'
       PYTHONUNBUFFERED: 1
+      # /opt/metviz is the import root for the shared `common` package, reused by
+      # the export worker so downloads match the TSP plots (see worker.py).
+      PYTHONPATH: '/app:/opt/metviz'
     volumes:
       - ./ncapp/app:/app
+      - ./metviz/common:/opt/metviz/common
       - download-data:/data/Download
     command: uvicorn main:app --host 0.0.0.0 --port 8000 --reload
     depends_on:
@@ -82,8 +86,12 @@ services:
       CELERY_BROKER_URL: 'redis://redis:6379/0'
       CELERY_RESULT_BACKEND: 'redis://redis:6379/0'
       PYTHONUNBUFFERED: 1
+      # Shared `common` package import root: the export task reuses the TSP
+      # data-prep so downloads match the plots (see worker.py / common/dataprep.py).
+      PYTHONPATH: '/app:/opt/metviz'
     volumes:
       - ./ncapp/app:/app
+      - ./metviz/common:/opt/metviz/common
       - download-data:/data/Download
     command: celery -A worker.celery worker --beat --loglevel=info
     depends_on:

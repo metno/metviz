@@ -57,7 +57,35 @@ ncapp/app/templates/error.html
 tests/test_download_api.py  # offline tests (signing/expiry, sweeper, /process_data)
 ```
 Edited: `ncapp/app/main.py` (include router + lifespan dir-create),
-`ncapp/requirements.txt`, `requirements-test.txt`, `docker-compose.yml`.
+`ncapp/app/worker.py` (reuse `common.dataprep`), `ncapp/requirements.txt`,
+`requirements-test.txt`, `docker-compose.yml` (mount `common` + `PYTHONPATH`).
+Shared: `metviz/common/dataprep.py` (new; see "Exports match the TSP plots").
+
+## Exports match the TSP plots
+
+The export worker prepares data through the **same** code path as the TSP plot,
+so a downloaded file reproduces exactly what the user saw. The shared logic
+lives in a dependency-light module, `metviz/common/dataprep.py` (numpy/xarray
+only — no panel/holoviews), imported by both:
+
+- `common.data.load_data` (plot path) wraps it with the Panel session cache.
+- `worker.process_data` (export path) calls it directly.
+
+What that buys the export:
+- **Same open semantics** — `open_decoded()` does CF time-decoding with the
+  `decode_times=False` fallback and the ERDDAP "no coordinates" fix-up. The
+  fix-up de-prefixes variable names (`s.ta` → `ta`), so the names the UI sent in
+  `variables` actually select on ERDDAP datasets (a plain `open_dataset` would
+  `KeyError`).
+- **Same fill masking** — `mask_fill()` replaces the `9.96921e36` sentinel with
+  NaN in *every* export (not just resampled ones), matching the plot.
+- **One frequency table** — `pandas_frequency_offsets` is defined once and
+  reused by the plot, the resampler, and the worker.
+
+The worker/ncapp containers therefore mount `metviz/common` at `/opt/metviz` and
+put it on `PYTHONPATH` (see `docker-compose.yml`), the same convention `ncview`
+already uses. `common.dataprep` pulls in no GUI deps, so the worker image does
+not gain panel/holoviews.
 
 ## How expiry works
 
