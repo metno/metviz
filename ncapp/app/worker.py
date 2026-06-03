@@ -23,6 +23,12 @@ import redis
 import xarray as xr
 from celery import Celery
 from celery.utils.log import get_task_logger
+from common.dataprep import (
+    datetime_coords,
+    mask_fill,
+    open_decoded,
+    pandas_frequency_offsets,
+)
 from signing import DOWNLOAD_TTL_SECONDS, download_dir
 
 logger = get_task_logger(__name__)
@@ -38,19 +44,6 @@ redis_client = redis.Redis.from_url(celery.conf.broker_url)
 SWEEP_INTERVAL_SECONDS = int(
     os.environ.get("SWEEP_INTERVAL_SECONDS", str(max(60, DOWNLOAD_TTL_SECONDS // 2)))
 )
-
-# UI label -> pandas offset alias (mirrors common.utility.pandas_frequency_offsets).
-PANDAS_FREQUENCY_OFFSETS = {
-    "Hourly": "h",
-    "Calendar day": "D",
-    "Weekly": "W",
-    "Month end": "ME",
-    "Quarter end": "QE",
-    "Yearly": "YE",
-}
-
-# Common NetCDF sentinel fill value that should be treated as missing.
-_FILL_VALUE = 9.96921e36
 
 
 @celery.on_after_configure.connect
@@ -78,13 +71,22 @@ def process_data(config: dict) -> bool:
 
     logger.info("processing %s -> %s (%s)", config.get("url"), filename, output_format)
 
-    ds = xr.open_dataset(config["url"], decode_times=config.get("decoded_time", True))
+    # Open exactly like the TSP plot path (CF decode + fallback + ERDDAP fix-up)
+    # so the export reproduces what the user saw — and so the de-prefixed
+    # variable names the UI sent select correctly on ERDDAP datasets.
+    ds, _decoded_time, _error = open_decoded(config["url"])
+    if ds is None:
+        raise RuntimeError(f"could not open dataset: {config['url']}")
 
     # Select requested variables (fall back to the whole dataset).
     subset = ds[variables] if variables else ds
 
+    # Mask the NetCDF fill sentinel to NaN, matching the plot's masking, so the
+    # downloaded file never carries the 9.96921e36 placeholder.
+    subset = mask_fill(subset)
+
     # Time-slice only when we have a decoded datetime coordinate and a range.
-    time_coords = [c for c in subset.coords if subset.coords.dtypes[c] == np.dtype("<M8[ns]")]
+    time_coords = datetime_coords(subset)
     time_range = config.get("time_range") or []
     if time_coords and len(time_range) == 2:
         selections = {tc: slice(time_range[0], time_range[1]) for tc in time_coords}
@@ -92,9 +94,9 @@ def process_data(config: dict) -> bool:
 
     # Optional resampling on the (first) time coordinate.
     if config.get("is_resampled") and time_coords:
-        freq = PANDAS_FREQUENCY_OFFSETS.get(config.get("resampling_frequency", ""))
+        freq = pandas_frequency_offsets.get(config.get("resampling_frequency", ""))
         if freq:
-            subset = subset.where(subset != _FILL_VALUE).resample({time_coords[0]: freq}).mean()
+            subset = subset.resample({time_coords[0]: freq}).mean()
 
     _write(subset, file_path, output_format)
 

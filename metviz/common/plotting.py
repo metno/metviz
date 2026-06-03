@@ -12,18 +12,10 @@ import hvplot.xarray  # noqa: F401  (registers the `.hvplot` accessor)
 import numpy as np
 import xarray as xr
 
-# NetCDF standard missing/fill value used by many CF-convention datasets.
-FILL_VALUE = 9.96921e36
-
-# Map the resampling-frequency labels shown in the UI to pandas offset aliases.
-pandas_frequency_offsets: dict[str, str] = {
-    "Hourly": "h",
-    "Calendar day": "D",
-    "Weekly": "W",
-    "Month end": "ME",
-    "Quarter end": "QE",
-    "Yearly": "YE",
-}
+# Fill value + resampling table live in `dataprep` so the plot path and the
+# export worker share one definition; re-exported here for existing callers.
+from .dataprep import FILL_VALUE, datetime_coords as _datetime_coords  # noqa: F401
+from .dataprep import pandas_frequency_offsets  # noqa: F401
 
 # Dimension-name keywords that imply a downward-positive (depth/pressure) axis.
 _DOWNWARD_KEYWORDS = ("depth", "pressure", "pres")
@@ -32,13 +24,6 @@ _DOWNWARD_KEYWORDS = ("depth", "pressure", "pres")
 def _first_var(var) -> str:
     """Normalise a variable argument that may arrive as a single-item list."""
     return var[0] if isinstance(var, list) else var
-
-
-def _datetime_coords(ds: xr.Dataset) -> list[str]:
-    return [
-        name for name in ds.coords
-        if np.issubdtype(ds.coords[name].dtype, np.datetime64)
-    ]
 
 
 def _resolve_title(ds: xr.Dataset, var: str, title: str | None) -> str:
