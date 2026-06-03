@@ -29,7 +29,6 @@ if _COMMON_ROOT not in sys.path:
     sys.path.insert(0, _COMMON_ROOT)
 
 import functools
-import json
 import threading
 import time
 
@@ -38,7 +37,7 @@ import panel as pn
 from bokeh.layouts import Spacer, column
 from bokeh.models import Button, Div
 from common.data import load_data
-from common.download import get_download_link
+from common.data_access import build_data_access
 from common.logging_utils import create_logger
 from common.plotting import plot, plot_quadmesh
 from common.urls import validate_opendap, validate_url
@@ -48,7 +47,7 @@ from common.variables import (
     is_empty,
     sort_axis_candidates,
 )
-from common.widgets import build_download_widget, build_metadata_widget, show_hide_widget
+from common.widgets import show_hide_widget
 from starlette.templating import Jinja2Templates
 
 pn.param.ParamMethod.loading_indicator = True
@@ -139,42 +138,6 @@ def on_quadmesh_select(event) -> None:
             if quadmesh_plot:
                 quadmesh_plot.pop(-1)
     logger.info(f"quadmesh: {event.obj.value}")
-
-
-def export_selection(event) -> None:
-    """Collect the export selection into a JSON spec and request a download link."""
-    format_mapping = {"NetCDF": "nc", "CSV": "csv", "Parquet": "pq"}
-    with pn.param.set_values(main_app, loading=True):
-        export_format = format_mapping[select_output_format.value]
-        fs_active = frequency_selector.visible
-        is_resampled = fs_active and frequency_selector.value not in ("--", "Raw")
-
-        if not fs_active or frequency_selector.value == "--":
-            time_range: list[str] = []
-        else:
-            time_range = [str(v) for v in date_time_range_slider.value]
-
-        selected_variables = [cb.name for cb in wbx if cb.value]
-        export_dataspec = {
-            "url": str(url),
-            "variables": selected_variables,
-            "decoded_time": decoded_time,
-            "time_range": time_range,
-            "is_resampled": is_resampled,
-            "resampling_frequency": frequency_selector.value if is_resampled else "raw",
-            "output_format": export_format,
-        }
-        download_link = get_download_link(json.dumps(export_dataspec))
-        event_log.text = '<marquee behavior="scroll" direction="left"><b>. . .  processing . . .</b></marquee>'
-        pn.state.curdoc.add_next_tick_callback(
-            functools.partial(_show_download_link, download_link=download_link, output_log=event_log)
-        )
-
-
-def _show_download_link(download_link: str, output_log: Div) -> None:
-    """Replace the processing notice with the finished download link."""
-    time.sleep(2)
-    output_log.text = f'<a href="{download_link}">Download</a>'
 
 
 pn.state.onload(callback=lambda: logger.info("server loaded"))
@@ -316,28 +279,15 @@ else:
         # Resampling only applies to monotonic time series.
         frequency_selector.visible = featureType == "timeseries" and bool(monotonic)
 
-        # Export + metadata widgets.
-        (export_button, wbx, date_time_range_slider, export_options_button,
-         event_log, select_output_format, export_resampling) = build_download_widget(
-            ds, mapping_var_names, has_frequency=True
+        # Shared Download + Metadata feature: the two header buttons plus the
+        # panels they reveal, with the export call wired internally.
+        data_access = build_data_access(
+            ds,
+            url=url,
+            variables=mapping_var_names,
+            decoded_time=decoded_time,
+            loading_target=lambda: main_app,
         )
-        export_options_button.on_click(export_selection)
-
-        download_header = Div(
-            text='<font size="2" color="darkslategray"><b>Data Export</b></font> <br> Variable Selection'
-        )
-        metadata_layout, metadata_button = build_metadata_widget(ds.attrs)
-        downloader = pn.Row(
-            Spacer(width=10),
-            pn.Column(
-                Spacer(height=120), download_header, wbx, date_time_range_slider,
-                select_output_format, export_resampling, export_options_button, event_log,
-                width=400, sizing_mode="fixed",
-            ),
-        )
-        downloader.visible = False
-        metadata_button.on_click(functools.partial(show_hide_widget, widget=metadata_layout, hide=downloader))
-        export_button.on_click(functools.partial(show_hide_widget, widget=downloader, hide=metadata_layout))
 
         variables_selector.param.watch(on_var_select, parameter_names=["value"])
         dimension_group.param.watch(on_dimension_select, parameter_names=["value"])
@@ -354,7 +304,7 @@ else:
                 pn.Row(Div(text='<font size="2" color="darkslategray">Dimension</font>'), dimension_group),
                 frequency_selector,
                 pn.Column(invert_yaxis_checkbox, swap_axes_checkbox, hide_empty_checkbox),
-                pn.Column(export_button, metadata_button),
+                pn.Column(data_access.download_button, data_access.metadata_button),
             ),
             quadmesh_checkbox,
             quadmesh_plot,
@@ -364,5 +314,9 @@ else:
             sizing_mode="scale_both",
         )
 
-        main_app = pn.Row(plot_container, Spacer(width=10), downloader, metadata_layout, height_policy="max")
+        main_app = pn.Row(
+            plot_container, Spacer(width=10),
+            data_access.download_panel, data_access.metadata_panel,
+            height_policy="max",
+        )
         main_app.servable()
