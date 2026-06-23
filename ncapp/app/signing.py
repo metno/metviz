@@ -1,10 +1,12 @@
 """Shared configuration and signed-token helpers for timestamped downloads.
 
-The download pipeline expires links by *signing the filename with a timestamp*
-(``itsdangerous.TimestampSigner``). Every access re-checks the age against
-``DOWNLOAD_TTL_SECONDS``; once exceeded the signature raises ``SignatureExpired``
-and the handler deletes the file. A background sweeper (see ``worker.py``)
-removes files that expire without ever being requested.
+The download token is a filename *signed* with ``itsdangerous.TimestampSigner``:
+the signature proves authenticity (it can't be forged without the key), and the
+filename round-trips out of it. **Expiry, however, is anchored to the generated
+file's mtime** (``file_expiry`` = mtime + ``DOWNLOAD_TTL_SECONDS``), not the
+token's sign time — so a slow export still gives the user the full TTL once the
+file is ready, and a file is never deleted before its own TTL elapses. A
+background sweeper (see ``worker.py``) removes files past that age.
 
 Key/dir conventions are kept identical to ``metviz/common/download.py`` so the
 Panel client and this server agree:
@@ -17,7 +19,7 @@ from __future__ import annotations
 import os
 import re
 import uuid
-from datetime import timedelta
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
 from itsdangerous import TimestampSigner
@@ -29,7 +31,7 @@ SIGNING_KEY: str = os.environ.get("DOWNLOAD_SIGNING_KEY", "insecure-dev-key")
 # How long a download link stays valid, in seconds (default 10 minutes).
 DOWNLOAD_TTL_SECONDS: int = int(os.environ.get("DOWNLOAD_TTL_SECONDS", "600"))
 
-# Per-task metadata stored in Redis (keyed by Celery task id) is only useful
+# Export status stored in Redis (keyed by the download token) is only useful
 # while a download is live; expire it a bit after the link so it self-cleans
 # instead of accumulating forever.
 TASK_META_TTL_SECONDS: int = DOWNLOAD_TTL_SECONDS * 2
@@ -110,3 +112,17 @@ def filename_from_token(token: str) -> str:
 def file_for_token(token: str) -> Path:
     """Path to the stored file a token refers to."""
     return download_dir() / filename_from_token(token)
+
+
+def file_expiry(path: Path) -> datetime | None:
+    """When a generated file expires: its mtime + TTL (UTC), or None if absent.
+
+    Expiry is anchored to when the worker *finished writing* the file, not when
+    the job was enqueued. So a slow export still gives the user the full TTL to
+    download, and a file is never removed before its own TTL has elapsed.
+    """
+    try:
+        mtime = path.stat().st_mtime
+    except OSError:
+        return None
+    return datetime.fromtimestamp(mtime, tz=UTC) + timedelta(seconds=DOWNLOAD_TTL_SECONDS)

@@ -1,0 +1,23 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <!-- Auto-refresh: the file isn't ready yet; reload until the worker finishes. -->
+    <meta http-equiv="refresh" content="5">
+    <title>Preparing your download…</title>
+    <style>
+        body { margin: 40px; font-family: sans-serif; color: #222; }
+        .spinner { display: inline-block; width: 14px; height: 14px; border: 2px solid #ccc;
+                   border-top-color: #555; border-radius: 50%; animation: spin 0.8s linear infinite;
+                   vertical-align: middle; margin-right: 8px; }
+        @keyframes spin { to { transform: rotate(360deg); } }
+    </style>
+</head>
+<body>
+    <h1><span class="spinner"></span>Preparing your download…</h1>
+    <p>Your export is still being generated. This page refreshes automatically; the
+       download link and its countdown will appear here as soon as the file is ready.</p>
+    {% if filename %}<p><small>File: {{ filename }}</small></p>{% endif %}
+</body>
+</html>

@@ -4,34 +4,35 @@ Endpoints (the route shapes are fixed by the existing Panel client in
 ``metviz/common/download.py``):
 
   POST /process_data           enqueue an export job; returns a download_token
-  GET  /results/{token}        landing page with a live countdown + download link
+  GET  /results/{token}        landing page: countdown + link, or processing/failed/expired
   GET  /file_results/{token}   the actual bytes, refused (and deleted) once expired
 
-Expiry is enforced by the signed token (see ``signing.py``); there is no static
-file mount, so an expired link cannot be used to fetch the file.
+Expiry is anchored to the generated file's mtime (``signing.file_expiry``), so
+the countdown only starts once the worker has written the file. There is no
+static file mount, so an expired link cannot be used to fetch the file. Export
+failures are recorded in Redis (``worker.read_status``) and surfaced here.
 """
 
 from __future__ import annotations
 
-import json
 import os
+from datetime import UTC, datetime
 from pathlib import Path
 from urllib.parse import unquote, urlparse
 
 from fastapi import APIRouter, Body, Request
 from fastapi.responses import FileResponse
 from fastapi.templating import Jinja2Templates
-from itsdangerous import BadSignature, SignatureExpired
+from itsdangerous import BadSignature
 from models import DatasetConfig, TaskResponse
 from signing import (
-    TASK_META_TTL_SECONDS,
     download_dir,
+    file_expiry,
     filename_from_token,
     new_filename,
     sign_filename,
-    unsign_token,
 )
-from worker import process_data, redis_client
+from worker import process_data, read_status
 
 router = APIRouter()
 
@@ -78,12 +79,6 @@ def enqueue_process_data(
     config["download_token"] = download_token
 
     task = process_data.delay(config)
-    # Expiring TTL so per-task metadata self-cleans instead of growing forever.
-    redis_client.set(
-        task.id,
-        json.dumps({"download_token": download_token, "filename": filename}),
-        ex=TASK_META_TTL_SECONDS,
-    )
 
     return {
         "task_id": task.id,
@@ -93,67 +88,84 @@ def enqueue_process_data(
     }
 
 
+def _now() -> datetime:
+    return datetime.now(UTC)
+
+
+def _unlink(path: Path) -> None:
+    """Best-effort delete of a generated file."""
+    try:
+        path.unlink()
+    except OSError:
+        pass
+
+
+def _page(request: Request, name: str, **context):
+    """Render a template using the current (request-first) Starlette signature."""
+    return templates.TemplateResponse(request, name, context)
+
+
+def _failed_page(request: Request, token: str, reason: str):
+    return _page(request, "error.html", id=token, error=f"Export failed: {reason}")
+
+
+def _expired_page(request: Request, token: str):
+    return _page(request, "expired.html", id=token, error="The download link has expired.")
+
+
 @router.get("/results/{download_token}")
 async def download_landing(request: Request, download_token: str):
-    """Render the download landing page (with countdown), or the expired page."""
+    """Landing page: live countdown + download link, or processing / failed / expired."""
     try:
-        filename, expiry = unsign_token(download_token)
-    except SignatureExpired:
-        _remove_expired(download_token)
-        return templates.TemplateResponse(
-            "expired.html",
-            {"request": request, "id": download_token, "error": "The download link has expired."},
-        )
+        filename = filename_from_token(download_token)
     except BadSignature as exc:
-        return templates.TemplateResponse(
-            "error.html", {"request": request, "id": download_token, "error": str(exc)}
-        )
+        return _page(request, "error.html", id=download_token, error=str(exc))
 
-    return templates.TemplateResponse(
+    status = read_status(download_token)
+    if status.get("status") == "FAILED":
+        return _failed_page(request, download_token, status.get("error") or "unknown error")
+
+    path = download_dir() / filename
+    expiry = file_expiry(path)
+    if expiry is None:
+        # File not written yet — the export is still running; this page refreshes.
+        return _page(request, "processing.html", id=download_token, filename=filename)
+    if expiry <= _now():
+        _unlink(path)
+        return _expired_page(request, download_token)
+
+    return _page(
+        request,
         "download.html",
-        {
-            "request": request,
-            "token": download_token,
-            "filename": filename,
-            # The countdown JS reconstructs the expiry instant from these parts.
-            "year": expiry.year,
-            "month": expiry.month - 1,  # JS Date months are 0-based
-            "day": expiry.day,
-            "hour": expiry.hour,
-            "minute": expiry.minute,
-            "second": expiry.second,
-        },
+        token=download_token,
+        filename=filename,
+        # The countdown JS reconstructs the expiry instant (file mtime + TTL).
+        year=expiry.year,
+        month=expiry.month - 1,  # JS Date months are 0-based
+        day=expiry.day,
+        hour=expiry.hour,
+        minute=expiry.minute,
+        second=expiry.second,
     )
 
 
 @router.get("/file_results/{download_token}")
 async def serve_file(request: Request, download_token: str):
-    """Return the file bytes if the token is still valid, else delete + expire."""
+    """Return the bytes when ready and unexpired; else processing / failed / expired."""
     try:
-        filename, _expiry = unsign_token(download_token)
-    except SignatureExpired:
-        _remove_expired(download_token)
-        return templates.TemplateResponse(
-            "expired.html",
-            {"request": request, "id": download_token, "error": "The download link has expired."},
-        )
+        filename = filename_from_token(download_token)
     except BadSignature as exc:
-        return templates.TemplateResponse(
-            "error.html", {"request": request, "id": download_token, "error": str(exc)}
-        )
+        return _page(request, "error.html", id=download_token, error=str(exc))
+
+    status = read_status(download_token)
+    if status.get("status") == "FAILED":
+        return _failed_page(request, download_token, status.get("error") or "unknown error")
 
     path = download_dir() / filename
-    if not path.is_file():
-        return templates.TemplateResponse(
-            "error.html",
-            {"request": request, "id": download_token, "error": "File not found (still processing or removed)."},
-        )
+    expiry = file_expiry(path)
+    if expiry is None:
+        return _page(request, "error.html", id=download_token, error="File not ready yet (still processing).")
+    if expiry <= _now():
+        _unlink(path)
+        return _expired_page(request, download_token)
     return FileResponse(path, media_type=_media_type(filename), filename=path.name)
-
-
-def _remove_expired(download_token: str) -> None:
-    """Best-effort delete of the file backing an (expired) token."""
-    try:
-        (download_dir() / filename_from_token(download_token)).unlink()
-    except (OSError, BadSignature):
-        pass

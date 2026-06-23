@@ -65,42 +65,56 @@ def process_data(config: dict) -> bool:
     """
     out_dir = download_dir()
     filename = config["filename"]
+    download_token = config.get("download_token")
     file_path = out_dir / filename
     output_format = (config.get("output_format") or "nc").lower()
     variables = config.get("variables") or None
 
     logger.info("processing %s -> %s (%s)", config.get("url"), filename, output_format)
 
-    # Open exactly like the TSP plot path (CF decode + fallback + ERDDAP fix-up)
-    # so the export reproduces what the user saw — and so the de-prefixed
-    # variable names the UI sent select correctly on ERDDAP datasets.
-    ds, _decoded_time, _error = open_decoded(config["url"])
-    if ds is None:
-        raise RuntimeError(f"could not open dataset: {config['url']}")
+    try:
+        # Open exactly like the TSP plot path (CF decode + fallback + ERDDAP
+        # fix-up) so the export reproduces what the user saw — and so the
+        # de-prefixed variable names the UI sent select correctly on ERDDAP.
+        ds, _decoded_time, _error = open_decoded(config["url"])
+        if ds is None:
+            raise RuntimeError(f"could not open dataset: {config['url']}")
 
-    # Select requested variables (fall back to the whole dataset).
-    subset = ds[variables] if variables else ds
+        # Select requested variables (fall back to the whole dataset). Keep only
+        # those actually present so a stale/renamed name fails loudly, not silently.
+        if variables:
+            missing = [v for v in variables if v not in ds.variables]
+            if missing:
+                raise KeyError(f"variables not in dataset: {', '.join(missing)}")
+            subset = ds[variables]
+        else:
+            subset = ds
 
-    # Mask the NetCDF fill sentinel to NaN, matching the plot's masking, so the
-    # downloaded file never carries the 9.96921e36 placeholder.
-    subset = mask_fill(subset)
+        # Mask the NetCDF fill sentinel to NaN, matching the plot's masking, so
+        # the downloaded file never carries the 9.96921e36 placeholder.
+        subset = mask_fill(subset)
 
-    # Time-slice only when we have a decoded datetime coordinate and a range.
-    time_coords = datetime_coords(subset)
-    time_range = config.get("time_range") or []
-    if time_coords and len(time_range) == 2:
-        selections = {tc: slice(time_range[0], time_range[1]) for tc in time_coords}
-        subset = subset.sel(selections)
+        # Time-slice only when we have a decoded datetime coordinate and a range.
+        time_coords = datetime_coords(subset)
+        time_range = config.get("time_range") or []
+        if time_coords and len(time_range) == 2:
+            selections = {tc: slice(time_range[0], time_range[1]) for tc in time_coords}
+            subset = subset.sel(selections)
 
-    # Optional resampling on the (first) time coordinate.
-    if config.get("is_resampled") and time_coords:
-        freq = pandas_frequency_offsets.get(config.get("resampling_frequency", ""))
-        if freq:
-            subset = subset.resample({time_coords[0]: freq}).mean()
+        # Optional resampling on the (first) time coordinate.
+        if config.get("is_resampled") and time_coords:
+            freq = pandas_frequency_offsets.get(config.get("resampling_frequency", ""))
+            if freq:
+                subset = subset.resample({time_coords[0]: freq}).mean()
 
-    _write(subset, file_path, output_format)
+        _write(subset, file_path, output_format)
+    except Exception as exc:
+        # Surface the reason on the landing page instead of a generic "not found".
+        logger.exception("export failed for %s", filename)
+        record_status(download_token, "FAILED", str(exc))
+        raise
 
-    _record_status(process_data.request.id, config, status="SUCCESS")
+    record_status(download_token, "SUCCESS")
     logger.info("completed %s", filename)
     return True
 
@@ -120,19 +134,35 @@ def _write(ds: xr.Dataset, file_path: Path, output_format: str) -> None:
             ds.to_netcdf(file_path, encoding=encoding)
 
 
-def _record_status(task_id: str, config: dict, status: str) -> None:
-    """Store download metadata in Redis, keyed by task id (with an expiry)."""
+def _meta_key(download_token: str) -> str:
+    return f"download:meta:{download_token}"
+
+
+def record_status(download_token: str | None, status: str, error: str = "") -> None:
+    """Record export status in Redis, keyed by the download token.
+
+    Keyed by token (not task id) so the ``/results`` and ``/file_results``
+    handlers can look it up to show SUCCESS / FAILED. The key carries an expiry
+    so it self-cleans rather than accumulating forever.
+    """
+    if not download_token:
+        return
     redis_client.set(
-        task_id,
-        json.dumps(
-            {
-                "download_token": config.get("download_token"),
-                "filename": config.get("filename"),
-                "status": status,
-            }
-        ),
+        _meta_key(download_token),
+        json.dumps({"status": status, "error": error}),
         ex=TASK_META_TTL_SECONDS,
     )
+
+
+def read_status(download_token: str) -> dict:
+    """Return the recorded ``{status, error}`` for a token, or ``{}`` if unknown."""
+    raw = redis_client.get(_meta_key(download_token))
+    if not raw:
+        return {}
+    try:
+        return json.loads(raw)
+    except (ValueError, TypeError):
+        return {}
 
 
 @celery.task(name="sweep_expired_downloads")

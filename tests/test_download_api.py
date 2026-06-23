@@ -112,6 +112,66 @@ def test_download_label_from_url_and_vars(tmp_path, monkeypatch):
     assert label == "UiO-Kongsvegen-AWS_ta-hur-ts"
 
 
+def test_file_expiry_from_mtime(signing, tmp_path):
+    """file_expiry returns mtime + TTL for an existing file, None when absent."""
+    import datetime as dt
+
+    f = tmp_path / "ready.nc"
+    f.write_text("data")
+    expiry = signing.file_expiry(f)
+    assert expiry is not None
+    seconds_left = (expiry - dt.datetime.now(dt.UTC)).total_seconds()
+    assert signing.DOWNLOAD_TTL_SECONDS - 5 < seconds_left <= signing.DOWNLOAD_TTL_SECONDS
+    assert signing.file_expiry(tmp_path / "missing.nc") is None
+
+
+def test_landing_failed_export(tmp_path, monkeypatch):
+    """A FAILED export surfaces its reason on the landing page."""
+    monkeypatch.setenv("TSPLOT_DOWNLOAD", str(tmp_path))
+    import download_api
+    import main
+    from fastapi.testclient import TestClient
+
+    monkeypatch.setattr(download_api, "filename_from_token", lambda _t: "x.nc")
+    monkeypatch.setattr(download_api, "read_status", lambda _t: {"status": "FAILED", "error": "boom"})
+
+    resp = TestClient(main.app).get("/results/whatever")
+    assert resp.status_code == 200
+    assert "Export failed: boom" in resp.text
+
+
+def test_landing_processing_when_file_absent(tmp_path, monkeypatch):
+    """No file yet + no failure -> the auto-refreshing 'processing' page."""
+    monkeypatch.setenv("TSPLOT_DOWNLOAD", str(tmp_path))
+    import download_api
+    import main
+    from fastapi.testclient import TestClient
+
+    monkeypatch.setattr(download_api, "filename_from_token", lambda _t: "missing.nc")
+    monkeypatch.setattr(download_api, "read_status", lambda _t: {})
+
+    resp = TestClient(main.app).get("/results/whatever")
+    assert resp.status_code == 200
+    assert "Preparing your download" in resp.text
+
+
+def test_serve_file_when_ready(tmp_path, monkeypatch):
+    """A ready, unexpired file is served with the right media type."""
+    monkeypatch.setenv("TSPLOT_DOWNLOAD", str(tmp_path))
+    import download_api
+    import main
+    from fastapi.testclient import TestClient
+
+    (tmp_path / "ready.nc").write_text("DATA")
+    monkeypatch.setattr(download_api, "filename_from_token", lambda _t: "ready.nc")
+    monkeypatch.setattr(download_api, "read_status", lambda _t: {"status": "SUCCESS"})
+
+    resp = TestClient(main.app).get("/file_results/whatever")
+    assert resp.status_code == 200
+    assert resp.content == b"DATA"
+    assert resp.headers["content-type"] == "application/x-netcdf"
+
+
 def test_sweeper_removes_aged_files(tmp_path, monkeypatch):
     monkeypatch.setenv("TSPLOT_DOWNLOAD", str(tmp_path))
     worker = importlib.reload(importlib.import_module("worker"))
@@ -148,12 +208,7 @@ def test_process_data_returns_token(tmp_path, monkeypatch):
         def delay(_config):
             return _FakeTask()
 
-    class _FakeRedis:
-        def set(self, *_args, **_kwargs):
-            return True
-
     monkeypatch.setattr(download_api, "process_data", _FakeProcess)
-    monkeypatch.setattr(download_api, "redis_client", _FakeRedis())
 
     client = TestClient(main.app)
     resp = client.post(
