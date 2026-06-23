@@ -45,7 +45,7 @@ def test_unsign_returns_future_expiry(signing):
 
     token = signing.sign_filename("data.csv")
     _name, expiry = signing.unsign_token(token)
-    seconds_left = (expiry - dt.datetime.now(dt.timezone.utc)).total_seconds()
+    seconds_left = (expiry - dt.datetime.now(dt.UTC)).total_seconds()
     assert signing.DOWNLOAD_TTL_SECONDS - 5 < seconds_left <= signing.DOWNLOAD_TTL_SECONDS
 
 
@@ -66,6 +66,50 @@ def test_token_tampered(signing):
 def test_file_for_token_strips_signature(signing):
     token = signing.sign_filename("abc.nc")
     assert signing.file_for_token(token) == Path(signing.download_dir()) / "abc.nc"
+
+
+def test_new_filename_includes_slugified_label(signing):
+    """A label is slugified into the name, keeping exactly one dot (the ext)."""
+    name = signing.new_filename("nc", "UiO-Kongsvegen-AWS.ncml_ta hur")
+    assert name.endswith(".nc")
+    assert name.count(".") == 1  # dots in the label are collapsed; only the ext dot remains
+    assert name.startswith("UiO-Kongsvegen-AWS")
+    # token still round-trips back to this exact filename
+    assert signing.unsign_token(signing.sign_filename(name))[0] == name
+
+
+def test_new_filename_without_label(signing):
+    name = signing.new_filename("csv")
+    assert name.endswith(".csv")
+    assert name.count(".") == 1
+
+
+def test_filename_from_token_ignores_expiry(signing, monkeypatch):
+    """The cleanup helper recovers the name even after the token has expired."""
+    token = signing.sign_filename("kongsvegen_ab12cd34ef.nc")
+    monkeypatch.setattr(signing, "DOWNLOAD_TTL_SECONDS", -1)  # force expiry
+    with pytest.raises(SignatureExpired):
+        signing.unsign_token(token)
+    assert signing.filename_from_token(token) == "kongsvegen_ab12cd34ef.nc"
+
+
+def test_media_type_by_extension(tmp_path, monkeypatch):
+    monkeypatch.setenv("TSPLOT_DOWNLOAD", str(tmp_path))
+    download_api = importlib.reload(importlib.import_module("download_api"))
+    assert download_api._media_type("x.nc") == "application/x-netcdf"
+    assert download_api._media_type("x.csv") == "text/csv"
+    assert download_api._media_type("x.pq") == "application/vnd.apache.parquet"
+    assert download_api._media_type("x.bin") == "application/octet-stream"
+
+
+def test_download_label_from_url_and_vars(tmp_path, monkeypatch):
+    monkeypatch.setenv("TSPLOT_DOWNLOAD", str(tmp_path))
+    download_api = importlib.reload(importlib.import_module("download_api"))
+    label = download_api._download_label(
+        {"url": "https://x/y/UiO-Kongsvegen-AWS.ncml", "variables": ["ta", "hur", "ts", "ps"]}
+    )
+    # source basename (sans extension) + first three variables
+    assert label == "UiO-Kongsvegen-AWS_ta-hur-ts"
 
 
 def test_sweeper_removes_aged_files(tmp_path, monkeypatch):

@@ -14,7 +14,6 @@ Panel client and this server agree:
 
 from __future__ import annotations
 
-import base64
 import os
 import re
 import uuid
@@ -30,6 +29,11 @@ SIGNING_KEY: str = os.environ.get("DOWNLOAD_SIGNING_KEY", "insecure-dev-key")
 # How long a download link stays valid, in seconds (default 10 minutes).
 DOWNLOAD_TTL_SECONDS: int = int(os.environ.get("DOWNLOAD_TTL_SECONDS", "600"))
 
+# Per-task metadata stored in Redis (keyed by Celery task id) is only useful
+# while a download is live; expire it a bit after the link so it self-cleans
+# instead of accumulating forever.
+TASK_META_TTL_SECONDS: int = DOWNLOAD_TTL_SECONDS * 2
+
 
 def download_dir() -> Path:
     """Return the configured download directory, creating it if needed."""
@@ -43,11 +47,29 @@ def get_signer() -> TimestampSigner:
     return TimestampSigner(SIGNING_KEY)
 
 
-def new_filename(output_format: str) -> str:
-    """Return a unique, URL-safe filename with the given extension."""
-    raw = base64.b64encode(uuid.uuid4().bytes).decode("utf-8")
-    unique = re.sub(r"[=+/]", lambda m: {"+": "-", "/": "_", "=": ""}[m.group(0)], raw)
-    return f"{unique}.{output_format}"
+def _slugify(text: str, maxlen: int = 60) -> str:
+    """Reduce arbitrary text to a dot-free, URL/filesystem-safe slug.
+
+    Dots are collapsed along with everything else non-alphanumeric: the signed
+    token is ``<filename>.<timestamp>.<sig>``, so the filename must contain
+    exactly one dot (the one before the extension) for the token to round-trip.
+    """
+    return re.sub(r"[^A-Za-z0-9]+", "-", text).strip("-")[:maxlen].strip("-")
+
+
+def new_filename(output_format: str, label: str = "") -> str:
+    """Return a unique, URL-safe filename, optionally prefixed with a label.
+
+    Shape: ``<slug>_<short-uid>.<ext>`` (or ``<short-uid>.<ext>`` when *label*
+    is empty). *label* is a human hint (source dataset name + variables); it is
+    slugified to stay dot-free so the signed token round-trips. The short random
+    suffix keeps on-disk names unique; security is provided by the HMAC
+    signature, not by the filename, so a short id is sufficient.
+    """
+    short_uid = uuid.uuid4().hex[:10]
+    slug = _slugify(label)
+    stem = f"{slug}_{short_uid}" if slug else short_uid
+    return f"{stem}.{output_format}"
 
 
 def sign_filename(filename: str) -> str:
@@ -73,7 +95,18 @@ def unsign_token(token: str):
     return filename_bytes.decode(), expiry
 
 
+def filename_from_token(token: str) -> str:
+    """Recover the signed filename **without** checking expiry.
+
+    Used by cleanup paths (deleting the file behind an already-expired token),
+    where the TTL check has already failed but we still need the name. Lets
+    ``itsdangerous`` parse the signature rather than splitting on dots, so it
+    stays correct even when the filename itself contains separators. Raises
+    ``BadSignature`` if the token was tampered with.
+    """
+    return get_signer().unsign(token).decode()
+
+
 def file_for_token(token: str) -> Path:
-    """Path to the stored file a token refers to (token = '<filename>.<sig>')."""
-    # The token is the filename plus a '.<sig>' suffix; strip the signature.
-    return download_dir() / token.rsplit(".", 2)[0]
+    """Path to the stored file a token refers to."""
+    return download_dir() / filename_from_token(token)

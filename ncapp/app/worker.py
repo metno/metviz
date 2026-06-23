@@ -29,7 +29,7 @@ from common.dataprep import (
     open_decoded,
     pandas_frequency_offsets,
 )
-from signing import DOWNLOAD_TTL_SECONDS, download_dir
+from signing import DOWNLOAD_TTL_SECONDS, TASK_META_TTL_SECONDS, download_dir
 
 logger = get_task_logger(__name__)
 
@@ -121,7 +121,7 @@ def _write(ds: xr.Dataset, file_path: Path, output_format: str) -> None:
 
 
 def _record_status(task_id: str, config: dict, status: str) -> None:
-    """Store download metadata in Redis, keyed by task id."""
+    """Store download metadata in Redis, keyed by task id (with an expiry)."""
     redis_client.set(
         task_id,
         json.dumps(
@@ -131,6 +131,7 @@ def _record_status(task_id: str, config: dict, status: str) -> None:
                 "status": status,
             }
         ),
+        ex=TASK_META_TTL_SECONDS,
     )
 
 

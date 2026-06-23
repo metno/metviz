@@ -15,6 +15,8 @@ from __future__ import annotations
 
 import json
 import os
+from pathlib import Path
+from urllib.parse import unquote, urlparse
 
 from fastapi import APIRouter, Body, Request
 from fastapi.responses import FileResponse
@@ -22,8 +24,9 @@ from fastapi.templating import Jinja2Templates
 from itsdangerous import BadSignature, SignatureExpired
 from models import DatasetConfig, TaskResponse
 from signing import (
+    TASK_META_TTL_SECONDS,
     download_dir,
-    file_for_token,
+    filename_from_token,
     new_filename,
     sign_filename,
     unsign_token,
@@ -35,6 +38,32 @@ router = APIRouter()
 _TEMPLATE_DIR = os.path.join(os.path.dirname(__file__), "templates")
 templates = Jinja2Templates(directory=_TEMPLATE_DIR)
 
+# Content type by output extension, so the browser/OS recognises the file
+# instead of treating every download as an opaque octet-stream.
+_MEDIA_TYPES = {
+    ".nc": "application/x-netcdf",
+    ".csv": "text/csv",
+    ".pq": "application/vnd.apache.parquet",
+    ".parquet": "application/vnd.apache.parquet",
+}
+
+
+def _media_type(filename: str) -> str:
+    """Best-effort content type from the file extension."""
+    return _MEDIA_TYPES.get(Path(filename).suffix.lower(), "application/octet-stream")
+
+
+def _download_label(config: dict) -> str:
+    """Human hint for the download filename: source dataset name + variables.
+
+    Slugification happens in ``new_filename``; here we just assemble the parts.
+    """
+    source = os.path.splitext(os.path.basename(urlparse(unquote(config.get("url") or "")).path))[0]
+    variables = config.get("variables") or []
+    var_part = "-".join(variables[:3])
+    base = source or "metviz"
+    return f"{base}_{var_part}" if var_part else base
+
 
 @router.post("/process_data", status_code=201, response_model=TaskResponse)
 def enqueue_process_data(
@@ -42,14 +71,19 @@ def enqueue_process_data(
 ):
     """Sign a target filename, enqueue the export job, return the download token."""
     config = payload.model_dump(mode="json")
-    filename = new_filename(config.get("output_format", "nc"))
+    filename = new_filename(config.get("output_format", "nc"), _download_label(config))
     download_token = sign_filename(filename)
 
     config["filename"] = filename
     config["download_token"] = download_token
 
     task = process_data.delay(config)
-    redis_client.set(task.id, json.dumps({"download_token": download_token, "filename": filename}))
+    # Expiring TTL so per-task metadata self-cleans instead of growing forever.
+    redis_client.set(
+        task.id,
+        json.dumps({"download_token": download_token, "filename": filename}),
+        ex=TASK_META_TTL_SECONDS,
+    )
 
     return {
         "task_id": task.id,
@@ -96,7 +130,7 @@ async def download_landing(request: Request, download_token: str):
 async def serve_file(request: Request, download_token: str):
     """Return the file bytes if the token is still valid, else delete + expire."""
     try:
-        unsign_token(download_token)
+        filename, _expiry = unsign_token(download_token)
     except SignatureExpired:
         _remove_expired(download_token)
         return templates.TemplateResponse(
@@ -108,18 +142,18 @@ async def serve_file(request: Request, download_token: str):
             "error.html", {"request": request, "id": download_token, "error": str(exc)}
         )
 
-    path = file_for_token(download_token)
+    path = download_dir() / filename
     if not path.is_file():
         return templates.TemplateResponse(
             "error.html",
             {"request": request, "id": download_token, "error": "File not found (still processing or removed)."},
         )
-    return FileResponse(path, media_type="application/octet-stream", filename=path.name)
+    return FileResponse(path, media_type=_media_type(filename), filename=path.name)
 
 
 def _remove_expired(download_token: str) -> None:
-    """Best-effort delete of the file backing an expired token."""
+    """Best-effort delete of the file backing an (expired) token."""
     try:
-        (download_dir() / download_token.rsplit(".", 2)[0]).unlink()
-    except OSError:
+        (download_dir() / filename_from_token(download_token)).unlink()
+    except (OSError, BadSignature):
         pass
