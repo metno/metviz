@@ -85,7 +85,9 @@ def process_data(config: dict) -> bool:
         if variables:
             missing = [v for v in variables if v not in ds.variables]
             if missing:
-                raise KeyError(f"variables not in dataset: {', '.join(missing)}")
+                # ValueError (not KeyError) so str() reads cleanly on the
+                # landing page — KeyError wraps its message in quotes.
+                raise ValueError(f"variables not in dataset: {', '.join(missing)}")
             subset = ds[variables]
         else:
             subset = ds
