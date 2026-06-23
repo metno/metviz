@@ -29,3 +29,5 @@ venv/
 # pytest / tooling caches
 .pytest_cache/
 .ruff_cache/
+# Celery beat schedule (runtime artifact written into the bind-mounted app dir)
+ncapp/app/celerybeat-schedule.db

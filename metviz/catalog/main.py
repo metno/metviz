@@ -36,6 +36,11 @@ pn.extension(sizing_mode="stretch_width")
 
 logger = create_logger(__name__)
 
+# Path prefix the Panel apps are served under behind the proxy (e.g. "/panel"
+# in production; empty when served at the root, as in dev). The catalog redirects
+# straight to the Panel app (/panel/TSP), not the FastAPI embed page (/api/TSP).
+_PANEL_PREFIX = os.environ.get("PANEL_PREFIX", "")
+
 # Example datasets, grouped by featureType, offered until CSW search lands.
 EXAMPLE_RESOURCES = {
     "Time Series 1": "https://thredds.met.no/thredds/dodsC/arcticdata/infranor/UiO-Kongsvegen-AWS/UiO-Kongsvegen-AWS-sw200-agg.ncml",
@@ -74,7 +79,7 @@ def load_data_button(clicks) -> None:
         return
     _, _, _, _, feature_type = load_data(url)
     logger.info(f"FeatureType detected: {feature_type}")
-    redirector.redirect(f"/{target_app_for(feature_type)}?url={url}")
+    redirector.redirect(f"{_PANEL_PREFIX}/{target_app_for(feature_type)}?url={url}")
 
 
 pn.Column(

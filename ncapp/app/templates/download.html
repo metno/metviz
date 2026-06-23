@@ -14,7 +14,7 @@
     <h1>Your download is ready</h1>
     <p>
         <!-- Served through the signed endpoint so expiry is enforced (no static mount). -->
-        <a class="download" href="/file_results/{{ token }}" download>Download {{ filename }}</a>
+        <a class="download" href="{{ request.scope.root_path }}/file_results/{{ token }}" download>Download {{ filename }}</a>
     </p>
     <p>This link will expire in: <span id="time_left"></span></p>
 

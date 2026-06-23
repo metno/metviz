@@ -164,7 +164,22 @@
       const toggleSwitch = document.getElementById('theme-toggle');
       const appLinks = document.querySelectorAll('.app-card');
       const homeLink = document.getElementById('home-link');
-      
+
+      // Derive the serving prefix from the index path ("/panel" behind the
+      // proxy, "" in dev) so the favicon/logo/home/logout point at the prefixed
+      // paths Bokeh actually serves. The app-card links ({{ item[0] }}) are
+      // already prefixed by Bokeh, so they are left untouched.
+      const APP_PREFIX = window.location.pathname.replace(/\/+$/, '');
+      (function applyPrefix() {
+        const favicon = document.querySelector('link[rel="icon"]');
+        if (favicon) favicon.href = `${APP_PREFIX}/assets/ADC_logo.png`;
+        const logo = homeLink ? homeLink.querySelector('img') : null;
+        if (logo) logo.src = `${APP_PREFIX}/assets/ADC_logo.png`;
+        if (homeLink) homeLink.setAttribute('href', `${APP_PREFIX}/`);
+        const logoutBtn = document.querySelector('.logout-button');
+        if (logoutBtn) logoutBtn.setAttribute('onclick', `window.location.href='${APP_PREFIX}/logout'`);
+      })();
+
       // Update all links with the correct theme query parameter
       function updateLinks(theme) {
         const themeParam = `?theme=${theme}`;
