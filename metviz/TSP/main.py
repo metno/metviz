@@ -68,10 +68,28 @@ def _selected_var_name() -> list[str]:
     return [name for name, display in mapping_var_names.items() if display == label]
 
 
+# Fixed height of the main plot (slider + figure). Must cover the figure's
+# `min_height` from `plot()` (600 for time series) plus its widget slider.
+PLOT_HEIGHT = 700
+
+
+def _fit_plot(widget):
+    """Size a ``plot()`` result: follow the column's width, fixed height.
+
+    Left unsized, the returned Column takes its content width (pinning the
+    column so the header can't wrap) and Panel promotes the responsive figure
+    to `stretch_both`, so the plot height tracked whatever the header and the
+    side panels left over. A fixed height keeps it stable.
+    """
+    widget.sizing_mode = "stretch_width"
+    widget.height = PLOT_HEIGHT
+    return widget
+
+
 def _replot() -> None:
     """Rebuild the main plot from the current widget state."""
     with pn.param.set_values(main_app, loading=True):
-        plot_container[-2] = plot(
+        plot_container[-2] = _fit_plot(plot(
             var=_selected_var_name(),
             ds=ds,
             dimension=dimension_group.value,
@@ -81,7 +99,7 @@ def _replot() -> None:
             featureType=featureType,
             invert_yaxis=invert_yaxis_checkbox.value,
             swap_axes=swap_axes_checkbox.value,
-        )
+        ))
 
 
 def _refresh_quadmesh() -> None:
@@ -296,27 +314,43 @@ else:
 
         logger.info(f"Initial variable: {initial_var}, dimension: {dimension_group.value}")
 
-        quadmesh_plot = pn.Row(sizing_mode="scale_both")
+        # The responsive QuadMesh has no height floor of its own, so its
+        # container supplies a definite one.
+        quadmesh_plot = pn.Row(sizing_mode="stretch_width", height=500)
         quadmesh_plot.visible = False
+        # Layout notes:
+        # - The header is a wrapping FlexBox: when the plot column narrows
+        #   (small window, or the Download/Metadata panel opens beside it) the
+        #   controls flow onto a new line instead of overflowing into the panel.
+        # - The plot column stretches in width only. `scale_both` kept the
+        #   aspect ratio, so any width change (e.g. opening the metadata panel)
+        #   also resized the plot vertically; see `_fit_plot`.
         plot_container = pn.Column(
-            pn.Row(
+            pn.FlexBox(
                 variables_selector,
                 pn.Row(Div(text='<font size="2" color="darkslategray">Dimension</font>'), dimension_group),
                 frequency_selector,
                 pn.Column(invert_yaxis_checkbox, swap_axes_checkbox, hide_empty_checkbox),
                 pn.Column(data_access.download_button, data_access.metadata_button),
+                flex_wrap="wrap",
+                sizing_mode="stretch_width",
             ),
             quadmesh_checkbox,
             quadmesh_plot,
-            plot(initial_var, ds, dimension_group.value, title=variables_selector.value,
-                 frequency=frequency_selector.value, monotonic=monotonic, featureType=featureType),
+            _fit_plot(plot(initial_var, ds, dimension_group.value, title=variables_selector.value,
+                           frequency=frequency_selector.value, monotonic=monotonic, featureType=featureType)),
             Spacer(height=10),
-            sizing_mode="scale_both",
+            sizing_mode="stretch_width",
+            min_width=400,
         )
 
-        main_app = pn.Row(
-            plot_container, Spacer(width=10),
+        # A CSS FlexBox, not a pn.Row: Row pins its min_width to the sum of
+        # its children's widths — including the *hidden* side panels — so the
+        # page never narrowed and the plot column slid under the panels.
+        main_app = pn.FlexBox(
+            plot_container,
             data_access.download_panel, data_access.metadata_panel,
-            height_policy="max",
+            flex_wrap="nowrap",
+            gap="10px",
         )
         main_app.servable()

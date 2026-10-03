@@ -131,6 +131,9 @@ datetime_slider = pn.widgets.DatetimeSlider(
     start=ds.indexes["time"][0],
     end=ds.indexes["time"][-1],
     value=ds.indexes["time"][0],
+    # Grow into the header's spare width but share its line (as a stretch_width
+    # widget it would otherwise take a whole line of the wrapping FlexBox).
+    styles={"flex": "1 1 300px"},
 )
 
 index_value = pn.widgets.TextInput(name="Location", value="index", width=200)
@@ -352,14 +355,27 @@ bound_function = pn.bind(makeplot, variable=var_select, idx=get_idx)
 dmap = hv.DynamicMap(bound_function)
 
 
-layout = pn.Row(pn.GridBox(
-   pn.Row(
-       var_select, datetime_slider, throttle_checkbox, index_value,
-       data_access.download_button, data_access.metadata_button,
-   ),
-   pn.Row(dmap, m),
-   ncols=1, nrows=2
-), data_access.download_panel, data_access.metadata_panel)
+# The header wraps (FlexBox) so that when the plot column narrows — small
+# window, or the Download/Metadata panel opens beside it — the controls flow
+# onto a new line instead of overflowing into the panel.
+# A CSS FlexBox, not a pn.Row: Row pins its min_width to the sum of its
+# children's widths — including the *hidden* side panels.
+layout = pn.FlexBox(
+    pn.Column(
+        pn.FlexBox(
+            var_select, datetime_slider, throttle_checkbox, index_value,
+            data_access.download_button, data_access.metadata_button,
+            flex_wrap="wrap",
+            sizing_mode="stretch_width",
+        ),
+        pn.Row(dmap, m),
+        sizing_mode="stretch_width",
+        min_width=400,
+    ),
+    data_access.download_panel, data_access.metadata_panel,
+    flex_wrap="nowrap",
+    gap="10px",
+)
 
 m.layout.width = '100%'
 m.layout.overflow = 'hidden'
